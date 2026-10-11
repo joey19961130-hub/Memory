@@ -9,6 +9,10 @@ export const CLOUD_VIDEO_URL =
 
 export interface SiteSettings {
   brandName: string;
+  /** 品牌 Logo（顯示在導覽列、載入畫面、瀏覽器分頁圖示）；空白則顯示品牌名稱文字 */
+  logoUrl: string;
+  /** 深色背景（首頁後段）時把 Logo 轉成白色 */
+  logoInvert: boolean;
   /** LINE 官方帳號 ID（例如 @abc1234）。有填時，詢問按鈕會自動帶入商品名稱。 */
   lineId: string;
   /** LINE 加好友連結（例如 https://lin.ee/xxxx），沒填 lineId 時使用。 */
@@ -41,13 +45,18 @@ export interface Product {
   /** 新台幣；null 代表「價格請洽詢」 */
   price: number | null;
   description: string;
+  /** 封面照片（= images[0]），保留給舊資料與只需一張圖的地方 */
   image_url: string;
+  /** 所有商品照片，第一張為封面 */
+  images: string[];
   published: boolean;
   sort_order: number;
 }
 
 export const DEFAULT_SETTINGS: SiteSettings = {
   brandName: '品牌名稱',
+  logoUrl: '',
+  logoInvert: true,
   lineId: '',
   lineUrl: 'https://line.me/',
   videoUrl: DEFAULT_VIDEO_URL,
@@ -72,11 +81,11 @@ export const DEFAULT_SETTINGS: SiteSettings = {
 };
 
 export const DEFAULT_PRODUCTS: Product[] = [
-  { id: 'demo-1', name: '手繪壓克力吊飾', category: '吊飾', price: 180, description: '雙面印刷壓克力，附金屬扣環。', image_url: '', published: true, sort_order: 1 },
-  { id: 'demo-2', name: '香氛擴香片', category: '香氛', price: 220, description: '天然精油擴香，掛在衣櫃或車內。', image_url: '', published: true, sort_order: 2 },
-  { id: 'demo-3', name: '禮物包裝組', category: '包裝', price: 120, description: '紙盒、緞帶與小卡一組。', image_url: '', published: true, sort_order: 3 },
-  { id: 'demo-4', name: '琺瑯徽章 Pin', category: '徽章 Pin', price: 250, description: '硬琺瑯工藝，附背卡。', image_url: '', published: true, sort_order: 4 },
-  { id: 'demo-5', name: '療癒絨毛娃娃', category: '娃娃', price: null, description: '可客製服裝與刺繡，價格請洽詢。', image_url: '', published: true, sort_order: 5 },
+  { id: 'demo-1', name: '手繪壓克力吊飾', category: '吊飾', price: 180, description: '雙面印刷壓克力，附金屬扣環。', image_url: 'demo/charm-1.webp', images: ['demo/charm-1.webp', 'demo/charm-2.webp', 'demo/charm-3.webp'], published: true, sort_order: 1 },
+  { id: 'demo-2', name: '香氛擴香片', category: '香氛', price: 220, description: '天然精油擴香，掛在衣櫃或車內。', image_url: 'demo/sachet-1.webp', images: ['demo/sachet-1.webp', 'demo/sachet-2.webp', 'demo/sachet-3.webp'], published: true, sort_order: 2 },
+  { id: 'demo-3', name: '禮物包裝組', category: '包裝', price: 120, description: '紙盒、緞帶與小卡一組。', image_url: 'demo/box-1.webp', images: ['demo/box-1.webp', 'demo/box-2.webp', 'demo/box-3.webp'], published: true, sort_order: 3 },
+  { id: 'demo-4', name: '琺瑯徽章 Pin', category: '徽章 Pin', price: 250, description: '硬琺瑯工藝，附背卡。', image_url: 'demo/pin-1.webp', images: ['demo/pin-1.webp', 'demo/pin-2.webp', 'demo/pin-3.webp'], published: true, sort_order: 4 },
+  { id: 'demo-5', name: '療癒絨毛娃娃', category: '娃娃', price: null, description: '可客製服裝與刺繡，價格請洽詢。', image_url: 'demo/bear-1.webp', images: ['demo/bear-1.webp', 'demo/bear-2.webp', 'demo/bear-3.webp'], published: true, sort_order: 5 },
 ];
 
 // ---------------------------------------------------------------------------
@@ -113,8 +122,23 @@ const mergeSettings = (data: Partial<SiteSettings> | null | undefined): SiteSett
   ...(data ?? {}),
 });
 
+/** Fill `images` for rows saved before multi-photo support, and keep image_url = cover. */
+export function normalizeProduct(p: Partial<Product> & { id: string; name: string }): Product {
+  const images = (p.images?.filter(Boolean) ?? []).length ? p.images!.filter(Boolean) : p.image_url ? [p.image_url] : [];
+  return {
+    category: '',
+    price: null,
+    description: '',
+    published: true,
+    sort_order: 0,
+    ...p,
+    images,
+    image_url: images[0] ?? '',
+  };
+}
+
 const sortProducts = (list: Product[]) =>
-  [...list].sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name));
+  list.map(normalizeProduct).sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name));
 
 export async function loadSettings(): Promise<SiteSettings> {
   if (!supabase) return mergeSettings(lsGet<Partial<SiteSettings>>(LS_SETTINGS));
@@ -136,14 +160,15 @@ export async function listProducts(includeHidden = false): Promise<Product[]> {
     const list = lsGet<Product[]>(LS_PRODUCTS) ?? DEFAULT_PRODUCTS;
     return sortProducts(includeHidden ? list : list.filter((p) => p.published));
   }
-  let q = supabase.from('products').select('id,name,category,price,description,image_url,published,sort_order');
+  let q = supabase.from('products').select('id,name,category,price,description,image_url,images,published,sort_order');
   if (!includeHidden) q = q.eq('published', true);
   const { data, error } = await q.order('sort_order', { ascending: true });
   if (error) throw error;
   return sortProducts((data ?? []) as Product[]);
 }
 
-export async function saveProduct(product: Product): Promise<Product> {
+export async function saveProduct(input: Product): Promise<Product> {
+  const product = normalizeProduct(input);
   if (!supabase) {
     const list = lsGet<Product[]>(LS_PRODUCTS) ?? DEFAULT_PRODUCTS;
     const saved = { ...product, id: product.id || `local-${crypto.randomUUID()}` };
@@ -158,7 +183,7 @@ export async function saveProduct(product: Product): Promise<Product> {
     : supabase.from('products').insert(fields);
   const { data, error } = await query.select().single();
   if (error) throw error;
-  return data as Product;
+  return normalizeProduct(data as Product);
 }
 
 export async function saveProductOrder(products: Product[]): Promise<void> {
@@ -201,15 +226,42 @@ const blobToDataUrl = (blob: Blob) =>
     r.readAsDataURL(blob);
   });
 
-/** Upload an image and return its public URL (demo mode: a data URL). */
-export async function uploadImage(file: File, folder: 'products' | 'site'): Promise<string> {
-  if (!file.type.startsWith('image/')) throw new Error('請選擇圖片檔');
-  if (!supabase) return blobToDataUrl(await resizeImage(file, 800, 'image/jpeg'));
-  const blob = await resizeImage(file, 1600, 'image/webp');
-  const path = `${folder}/${crypto.randomUUID()}.webp`;
-  const { error } = await supabase.storage.from(BUCKET).upload(path, blob, { contentType: 'image/webp' });
+export type UploadFolder = 'products' | 'site' | 'logo';
+
+const extOf = (type: string) => (type === 'image/svg+xml' ? 'svg' : type.split('/')[1] || 'bin');
+
+async function putFile(blob: Blob, folder: string, contentType: string): Promise<string> {
+  if (!supabase) throw new Error('尚未設定 Supabase');
+  const path = `${folder}/${crypto.randomUUID()}.${extOf(contentType)}`;
+  const { error } = await supabase.storage.from(BUCKET).upload(path, blob, { contentType, cacheControl: '31536000' });
   if (error) throw error;
   return supabase.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+}
+
+/**
+ * Upload an image and return its public URL (demo mode: a data URL).
+ * Logos keep transparency (PNG/WebP) and SVGs are stored untouched.
+ */
+export async function uploadImage(file: File, folder: UploadFolder): Promise<string> {
+  if (!file.type.startsWith('image/')) throw new Error('請選擇圖片檔（JPG、PNG、WebP、SVG）');
+  if (file.size > 20 * 1024 * 1024) throw new Error('圖片超過 20MB，請先縮小');
+  if (file.type === 'image/svg+xml') {
+    return supabase ? putFile(file, folder, file.type) : blobToDataUrl(file);
+  }
+  const isLogo = folder === 'logo';
+  if (!supabase) {
+    return blobToDataUrl(await resizeImage(file, isLogo ? 400 : 800, isLogo ? 'image/png' : 'image/jpeg'));
+  }
+  const blob = await resizeImage(file, isLogo ? 800 : 1600, 'image/webp');
+  return putFile(blob, folder, 'image/webp');
+}
+
+/** Upload a background video (Supabase only — browsers can't keep videos in demo storage). */
+export async function uploadVideo(file: File): Promise<string> {
+  if (!supabase) throw new Error('示範模式無法上傳影片，請先設定 Supabase，或貼上影片網址');
+  if (file.type !== 'video/mp4') throw new Error('請上傳 MP4 影片（H.264）');
+  if (file.size > 50 * 1024 * 1024) throw new Error('影片超過 50MB（Supabase 免費方案上限），請先壓縮');
+  return putFile(file, 'video', 'video/mp4');
 }
 
 export function formatPrice(price: number | null): string {

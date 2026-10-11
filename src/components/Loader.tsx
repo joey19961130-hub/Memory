@@ -10,7 +10,7 @@ const MIN_MS = 700;
  * Intro / waiting screen: bouncing palette dots + progress line while content loads,
  * then the brand name rises in and the curtain lifts to reveal the hero.
  */
-export function Loader({ ready, brandName }: { ready: boolean; brandName: string }) {
+export function Loader({ ready, brandName, logoUrl }: { ready: boolean; brandName: string; logoUrl: string }) {
   const [started, setStarted] = useState(false);
   const [minElapsed, setMinElapsed] = useState(false);
   const [phase, setPhase] = useState<'loading' | 'brand' | 'exit' | 'gone'>('loading');
@@ -79,6 +79,18 @@ export function Loader({ ready, brandName }: { ready: boolean; brandName: string
             />
           ))}
         </div>
+        {logoUrl && (
+          <img
+            src={logoUrl}
+            alt=""
+            className="h-16 w-auto max-w-[220px] object-contain mb-6"
+            style={{
+              opacity: phase === 'loading' ? 0 : 1,
+              transform: phase === 'loading' ? 'scale(0.85) translateY(10px)' : 'none',
+              transition: `opacity 700ms ${EASE_OUT}, transform 900ms ${EASE_OUT}`,
+            }}
+          />
+        )}
         <div className="h-[1.6em] text-xl sm:text-2xl font-light tracking-[0.35em] uppercase" style={{ color: DARK }}>
           {phase !== 'loading' && <SplitReveal text={brandName} show stagger={55} duration={800} />}
         </div>

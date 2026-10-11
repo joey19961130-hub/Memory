@@ -4,21 +4,43 @@ import { formatPrice, lineLink, type Product, type SiteSettings } from '@/lib/co
 import { DARK, placeholderTone } from '@/lib/theme';
 import { EASE_OUT, prefersReducedMotion, useInView, useScrollParallax } from '@/lib/motion';
 import { DrawLine, Reveal, SplitReveal } from '@/components/Reveal';
+import { Gallery, Placeholder, cursorZoomHandlers } from '@/components/Gallery';
 
 const LINE_GREEN = '#06C755';
 
 function ProductImage({ product, className }: { product: Product; className?: string }) {
   if (product.image_url) {
-    return <img src={product.image_url} alt={product.name} loading="lazy" className={`object-cover ${className ?? ''}`} />;
+    return <img src={product.image_url} alt={product.name} loading="lazy" draggable={false} className={`object-cover ${className ?? ''}`} />;
   }
-  return (
-    <div
-      className={`flex items-center justify-center text-sm tracking-[0.3em] uppercase ${className ?? ''}`}
-      style={{ backgroundColor: placeholderTone(product.category || product.name), color: `${DARK}80` }}
-    >
-      {product.category || '商品'}
-    </div>
-  );
+  return <Placeholder product={product} className={className} />;
+}
+
+/**
+ * Touch screens have no hover, so the card(s) crossing the middle of the viewport take focus instead.
+ * Writes data attributes straight to the DOM; CSS in index.css does the dim/blur/scale.
+ */
+function useCenterFocus(gridRef: React.RefObject<HTMLDivElement>, deps: unknown[]) {
+  useEffect(() => {
+    const grid = gridRef.current;
+    if (!grid || window.matchMedia('(hover: hover) and (pointer: fine)').matches || prefersReducedMotion()) return;
+    if (typeof IntersectionObserver === 'undefined') return;
+    grid.dataset.touchFocus = 'true';
+    const focused = new Set<Element>();
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          (e.target as HTMLElement).dataset.focus = String(e.isIntersecting);
+          if (e.isIntersecting) focused.add(e.target);
+          else focused.delete(e.target);
+        }
+        grid.dataset.hasFocus = String(focused.size > 0);
+      },
+      { rootMargin: '-42% 0px -42% 0px' },
+    );
+    grid.querySelectorAll('.focus-card').forEach((c) => io.observe(c));
+    return () => io.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
 }
 
 function LineButton({ href, label = 'LINE 詢問' }: { href: string; label?: string }) {
@@ -92,6 +114,7 @@ function ProductModal({
       style={{
         backgroundColor: open ? 'rgba(10,18,28,0.55)' : 'rgba(10,18,28,0)',
         backdropFilter: open ? 'blur(6px)' : 'blur(0px)',
+        pointerEvents: open ? 'auto' : 'none',
         transition: `background-color 400ms ease, backdrop-filter 400ms ease`,
       }}
       onClick={onClose}
@@ -107,7 +130,7 @@ function ProductModal({
       >
         <div className="overflow-hidden">
           <div style={{ transform: open ? 'scale(1)' : 'scale(1.12)', transition: `transform 1200ms ${EASE_OUT}` }}>
-            <ProductImage product={product} className="w-full aspect-square" />
+            <Gallery product={product} open={open} />
           </div>
         </div>
         <div className="relative p-6 sm:p-8 flex flex-col">
@@ -232,15 +255,17 @@ function ProductCard({ product, index, settings, onOpen }: { product: Product; i
           onOpen(product);
         }
       }}
-      className="group text-left cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-4 rounded-xl"
+      className="focus-card group text-left cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-4 rounded-xl"
       style={{
         opacity: inView ? 1 : 0,
         transform: inView ? 'none' : 'translate3d(0,48px,0) scale(0.97)',
         transition: `opacity 900ms ${EASE_OUT} ${delay}ms, transform 900ms ${EASE_OUT} ${delay}ms`,
       }}
     >
+      <div className="focus-inner">
       <div
-        className="relative overflow-hidden rounded-xl mb-4 transition-shadow duration-500 group-hover:shadow-xl"
+        {...cursorZoomHandlers()}
+        className="cursor-zoom relative overflow-hidden rounded-xl mb-4 transition-shadow duration-500 group-hover:shadow-xl"
         style={{
           clipPath: inView ? 'inset(0 0 0 0 round 12px)' : 'inset(100% 0 0 0 round 12px)',
           transition: `clip-path 1100ms cubic-bezier(0.76,0,0.24,1) ${delay + 80}ms, box-shadow 500ms`,
@@ -252,7 +277,7 @@ function ProductCard({ product, index, settings, onOpen }: { product: Product; i
             transition: `transform 1400ms ${EASE_OUT} ${delay + 80}ms`,
           }}
         >
-          <ProductImage product={product} className="w-full aspect-square transition-transform duration-700 group-hover:scale-105" />
+          <ProductImage product={product} className="zoom-target w-full aspect-square" />
         </div>
         <span className="absolute inset-x-0 bottom-0 p-3 text-[11px] tracking-[0.2em] text-white bg-gradient-to-t from-black/40 to-transparent translate-y-full group-hover:translate-y-0 transition-transform duration-500">
           查看詳情
@@ -266,15 +291,26 @@ function ProductCard({ product, index, settings, onOpen }: { product: Product; i
         {formatPrice(product.price)}
       </p>
       <LineButton href={lineLink(settings, product.name)} />
+      </div>
     </div>
   );
 }
 
-export const Catalog = memo(function Catalog({ settings, products }: { settings: SiteSettings; products: Product[] }) {
+export const Catalog = memo(function Catalog({
+  settings,
+  products,
+  previewProduct = null,
+}: {
+  settings: SiteSettings;
+  products: Product[];
+  /** admin live preview: keep this draft product's detail view open */
+  previewProduct?: Product | null;
+}) {
   const [filter, setFilter] = useState<string>('全部');
   const [selected, setSelected] = useState<Product | null>(null);
   const [open, setOpen] = useState(false);
   const closeTimer = useRef(0);
+  const gridRef = useRef<HTMLDivElement>(null);
 
   const categories = useMemo(() => {
     const used = new Set(products.map((p) => p.category).filter(Boolean));
@@ -295,6 +331,18 @@ export const Catalog = memo(function Catalog({ settings, products }: { settings:
     closeTimer.current = window.setTimeout(() => setSelected(null), prefersReducedMotion() ? 0 : 450);
   }, []);
 
+  useCenterFocus(gridRef, [filter, visible.length]);
+
+  // admin preview: open the draft once, then keep the open modal in sync with every edit
+  const previewId = previewProduct?.id;
+  useEffect(() => {
+    if (previewId) openProduct(previewProduct!);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewId, openProduct]);
+  useEffect(() => {
+    if (previewProduct) setSelected((prev) => (prev ? previewProduct : prev));
+  }, [previewProduct]);
+
   return (
     <section id="products" className="px-6 sm:px-8 md:px-20 lg:px-32 py-24 sm:py-32" style={{ color: DARK }}>
       <SectionHeading title={settings.productsTitle} intro={settings.productsIntro} />
@@ -309,7 +357,7 @@ export const Catalog = memo(function Catalog({ settings, products }: { settings:
         </Reveal>
       ) : (
         // keyed by filter so a category switch re-plays the staggered entrance
-        <div key={filter} className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-x-4 gap-y-10 sm:gap-x-6">
+        <div ref={gridRef} key={filter} className="focus-grid grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-x-4 gap-y-10 sm:gap-x-6">
           {visible.map((p, i) => (
             <ProductCard key={p.id} product={p} index={i} settings={settings} onOpen={openProduct} />
           ))}

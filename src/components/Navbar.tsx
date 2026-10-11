@@ -16,10 +16,16 @@ const isExternal = (href: string) => href.startsWith('http');
 export function Navbar({
   isLight,
   lineHref,
+  logoUrl,
+  logoInvert,
+  brandName,
   onOpenMenu,
 }: {
   isLight: boolean;
   lineHref: string;
+  logoUrl: string;
+  logoInvert: boolean;
+  brandName: string;
   onOpenMenu: () => void;
 }) {
   const [shown, setShown] = useState(false);
@@ -36,6 +42,7 @@ export function Navbar({
       className="absolute top-0 left-0 right-0 z-50 pointer-events-auto px-6 sm:px-8 md:px-12 pt-8 sm:pt-12 pb-6 flex items-center justify-between transition-colors duration-500"
       style={{ color }}
     >
+      <div className="flex items-center gap-5 lg:gap-10">
       {/* Mobile hamburger */}
       <button
         type="button"
@@ -52,6 +59,17 @@ export function Navbar({
           />
         ))}
       </button>
+
+      {logoUrl && (
+        <a href="#top" aria-label={brandName} className="block shrink-0" style={entrance(shown, 60)}>
+          <img
+            src={logoUrl}
+            alt={brandName}
+            className="h-7 sm:h-8 w-auto max-w-[140px] object-contain transition-[filter] duration-500"
+            style={{ filter: isLight && logoInvert ? 'brightness(0) invert(1)' : 'none' }}
+          />
+        </a>
+      )}
 
       {/* Desktop links */}
       <div className="hidden lg:flex items-center gap-8 xl:gap-10">
@@ -75,6 +93,8 @@ export function Navbar({
             </a>
           );
         })}
+      </div>
+
       </div>
 
       {/* Right cluster */}

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useState, type CSSProperties } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { ArrowDown, ArrowRight, ChevronUp } from 'lucide-react';
 import { useVideoScrub } from '@/useVideoScrub';
 import { Stagger } from '@/components/Stagger';
@@ -9,6 +9,7 @@ import { MobileMenu, Navbar } from '@/components/Navbar';
 import { About, Catalog, Contact } from '@/components/Catalog';
 import { DEFAULT_SETTINGS, lineLink, listProducts, loadSettings, type Product, type SiteSettings } from '@/lib/content';
 import { DARK } from '@/lib/theme';
+import { isPreviewFrame, usePreviewDrafts, type PreviewTarget } from '@/lib/preview';
 
 const Admin = lazy(() => import('@/admin/Admin'));
 
@@ -38,10 +39,12 @@ export default function App() {
 }
 
 function Site() {
-  const [settings, setSettings] = useState<SiteSettings>(DEFAULT_SETTINGS);
+  const [savedSettings, setSettings] = useState<SiteSettings>(DEFAULT_SETTINGS);
   const [loaded, setLoaded] = useState(false);
-  const [products, setProducts] = useState<Product[]>([]);
+  const [savedProducts, setProducts] = useState<Product[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
+  // inside the admin's live-preview iframe, unsaved drafts override what is stored
+  const [preview] = useState(isPreviewFrame);
 
   useEffect(() => {
     loadSettings()
@@ -53,9 +56,39 @@ function Site() {
       .catch((e) => console.error('載入商品失敗', e));
   }, []);
 
+  const scrollToTarget = useCallback((target: PreviewTarget) => {
+    const el = document.getElementById('top');
+    const progress = { hero: 0.04, s2: 0.47, s3: 0.86 } as Record<string, number>;
+    if (target in progress && el) {
+      window.scrollTo({ top: el.offsetTop + progress[target] * (el.offsetHeight - window.innerHeight), behavior: 'smooth' });
+      return;
+    }
+    const id = target === 'product' ? 'products' : target;
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []);
+  const drafts = usePreviewDrafts(preview, scrollToTarget);
+  const settings = drafts.settings ?? savedSettings;
+  const products = useMemo(() => {
+    const d = drafts.product;
+    if (!d) return savedProducts;
+    return savedProducts.some((x) => x.id === d.id) ? savedProducts.map((x) => (x.id === d.id ? d : x)) : [...savedProducts, d];
+  }, [savedProducts, drafts.product]);
+
   useEffect(() => {
     document.title = settings.brandName || 'Scroll Tied Video Section';
   }, [settings.brandName]);
+
+  // Logo doubles as the favicon
+  useEffect(() => {
+    if (!settings.logoUrl) return;
+    let link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+    if (!link) {
+      link = document.createElement('link');
+      link.rel = 'icon';
+      document.head.appendChild(link);
+    }
+    link.href = settings.logoUrl;
+  }, [settings.logoUrl]);
 
   // Wait for settings so a custom video URL from the admin isn't preceded by a download of the default one.
   const { containerRef, videoRef, canvasRef, scrollProgress: p, canvasLive } = useVideoScrub(
@@ -90,7 +123,7 @@ function Site() {
 
   return (
     <>
-      <Loader ready={loaded} brandName={settings.brandName} />
+      {!preview && <Loader ready={loaded} brandName={settings.brandName} logoUrl={settings.logoUrl} />}
       <div id="top" ref={containerRef} className="relative h-[500vh]">
         <div ref={pointerRef} className="sticky top-0 w-full h-screen overflow-hidden" style={{ backgroundColor: '#F4F1EA' }}>
           {/* background plane: deepest parallax layer, slow push-in with scroll */}
@@ -116,7 +149,14 @@ function Site() {
           </div>
 
           <div className="absolute inset-0 pointer-events-none">
-            <Navbar isLight={p > 0.55} lineHref={lineHref} onOpenMenu={() => setMenuOpen(true)} />
+            <Navbar
+              isLight={p > 0.55}
+              lineHref={lineHref}
+              logoUrl={settings.logoUrl}
+              logoInvert={settings.logoInvert}
+              brandName={settings.brandName}
+              onOpenMenu={() => setMenuOpen(true)}
+            />
 
             {/* Section 1 */}
             <div
@@ -265,7 +305,7 @@ function Site() {
         </div>
       </div>
 
-      <Catalog settings={settings} products={products} />
+      <Catalog settings={settings} products={products} previewProduct={drafts.product} />
       <About settings={settings} />
       <Contact settings={settings} />
 
