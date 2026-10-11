@@ -54,6 +54,41 @@ npm run build      # 產生 dist/ 可上傳到任何靜態主機
   `https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260821_114821_a8ca298f-be2c-4613-a4dd-51b69e16bbde.mp4`
   外部影片需允許跨網域（CORS）才能逐格順暢捲動；不允許時會自動改用一般影片定位方式。
 
+## 後台功能
+
+- **Logo**：「主頁內容 → 品牌與 LINE」拖曳上傳（建議透明 PNG／SVG）。自動顯示在導覽列、載入畫面、瀏覽器分頁圖示；首頁深色段落可自動轉白。
+- **商品多張照片**：編輯商品時把多張照片一起拖進來；拖曳縮圖排序、點 ★ 設為封面（第一張＝封面）。前台詳細視窗可左右滑動、點擊放大。
+- **首頁影片與照片**：背景影片、品牌故事照片都能直接拖曳上傳（影片需 Supabase，50MB 內 MP4）。
+- **即時預覽**：編輯主頁內容或商品時，右邊會顯示網站預覽（電腦／手機切換），尚未儲存的內容也會即時反映，並自動捲到正在編輯的區塊。
+
+> 已經用舊版 `schema.sql` 建好 Supabase 的人：請在 SQL Editor 再執行一次 `supabase/migrations/002_images_logo.sql`（新增商品多照片欄位，可重複執行）。
+
+## 上市影片（9:16 直式，20 秒，原創配樂）
+
+`media/launch-video.mp4`：給 IG Reels／限動、TikTok、LINE 貼文用。
+畫面用的是**網站與後台的真實截圖**；配樂由程式原創合成，和畫面共用同一份節拍表 `tools/launch/timeline.json`（120 BPM，一拍＝15 格），所以每個剪接點、點擊、文字出現都落在拍點上。
+
+| 秒數 | 段落 |
+|---|---|
+| 0–2 | 開場鉤子：「小物，大心意。」＋品牌名 |
+| 2–4 | 五大分類快切（附真實價格） |
+| 4–8 | 官網實證：滑到商品 → 對焦放大（周圍模糊）→ 看清楚價格 |
+| 8–12 | 智慧詢問：一鍵 LINE 詢問、自動帶入商品名稱 |
+| 12–16 | 後台照片拖進來 → 前台同步更新 |
+| 16–18 | 高潮快剪（半拍一刀） |
+| 18–20 | 品牌收尾＋「加入 LINE 詢問」 |
+
+換成你的品牌重新產生：
+```bash
+npm run build && npx vite preview --port 4173 &   # 先開網站
+npm run launch:capture                            # 擷取最新的網站／後台畫面
+npm run launch:music                              # 產生配樂
+BRAND_JSON='{"name":"你的品牌","url":"yourbrand.com"}' npm run launch:render
+npm run launch:sync                               # 檢查畫面與音樂是否全部對拍
+```
+
+示範商品照片是 `tools/product-art/` 用程式畫的插圖（`npm run art` 重新產生），上傳真實照片後就會取代。
+
 ## 動態效果一覽
 
 | 區塊 | 效果 |
@@ -64,6 +99,7 @@ npm run build      # 產生 dist/ 可上傳到任何靜態主機
 | 商品一覽（Scroll-triggered） | 標題逐字＋畫線、商品卡片依序浮上、照片由下往上展開；分類切換有滑動底色、切換後重新依序出現 |
 | 商品詳情 | 電腦版縮放淡入、手機版由下往上滑出；內容依序出現 |
 | 品牌故事 | 照片框展開＋捲動視差、文字浮現 |
+| 商品對焦 | 電腦：滑鼠指到的商品清晰、其他輕微模糊變淡，照片在滑鼠位置放大；手機：捲到畫面中間的商品自動對焦 |
 | 導覽列 | 進場滑入、滑過時底線展開 |
 
 手機（觸控）不啟用滑鼠視差；系統開啟「減少動態效果」時，所有動畫會自動關閉、內容直接顯示。
@@ -77,6 +113,11 @@ src/lib/motion.ts         動畫工具：進入畫面偵測、捲動視差、滑
 src/components/Reveal.tsx 捲動觸發動畫、逐字浮現、畫線
 src/components/Loader.tsx 進站載入動畫
 tools/showreel/           背景影片的原始碼與渲染腳本
+tools/launch/             上市影片：節拍表、配樂合成、畫面渲染、對拍檢查
+tools/product-art/        示範商品插圖
+src/admin/Uploads.tsx     拖曳上傳、多照片管理、影片上傳
+src/lib/preview.ts        後台即時預覽的通訊
+src/components/Gallery.tsx 商品照片輪播與放大鏡
 src/lib/mp4demux.ts       mp4box 解析影片
 src/lib/content.ts        資料存取（Supabase／示範模式）、LINE 連結、價格格式
 src/components/           導覽列、手機選單、商品目錄、品牌故事、聯絡區

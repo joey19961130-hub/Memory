@@ -1,0 +1,368 @@
+{
+ "bpm": 120,
+ "fps": 30,
+ "beats": 40,
+ "width": 1080,
+ "height": 1920,
+ "typing": {
+  "start": 16.75,
+  "step": 0.125,
+  "text": "您好，我想詢問「琺瑯徽章 Pin」"
+ },
+ "events": [
+  {
+   "beat": 0,
+   "name": "hook",
+   "cut": true,
+   "sound": [
+    "impact",
+    "crash",
+    "kick",
+    "stabBig"
+   ]
+  },
+  {
+   "beat": 1,
+   "name": "hookWord2",
+   "cut": true,
+   "sound": [
+    "kick",
+    "clap",
+    "stab"
+   ]
+  },
+  {
+   "beat": 2,
+   "name": "hookBrand",
+   "cut": true,
+   "sound": [
+    "kick",
+    "clap",
+    "stab"
+   ]
+  },
+  {
+   "beat": 3,
+   "name": "hookWhip",
+   "cut": true,
+   "sound": [
+    "kick",
+    "stab"
+   ]
+  },
+  {
+   "beat": 4,
+   "name": "cat1",
+   "cut": true,
+   "sound": [
+    "kick",
+    "stab",
+    "crashSoft"
+   ]
+  },
+  {
+   "beat": 5,
+   "name": "cat2",
+   "cut": true,
+   "sound": [
+    "kick",
+    "stab"
+   ]
+  },
+  {
+   "beat": 6,
+   "name": "cat3",
+   "cut": true,
+   "sound": [
+    "kick",
+    "stab"
+   ]
+  },
+  {
+   "beat": 7,
+   "name": "cat4",
+   "cut": true,
+   "sound": [
+    "kick",
+    "stab"
+   ]
+  },
+  {
+   "beat": 7.5,
+   "name": "cat5",
+   "cut": true,
+   "sound": [
+    "snare",
+    "stab"
+   ]
+  },
+  {
+   "beat": 8,
+   "name": "site",
+   "cut": true,
+   "sound": [
+    "kick",
+    "crash",
+    "whoosh"
+   ]
+  },
+  {
+   "beat": 10,
+   "name": "scroll",
+   "cut": false,
+   "sound": [
+    "whoosh",
+    "tom"
+   ]
+  },
+  {
+   "beat": 12,
+   "name": "focus",
+   "cut": false,
+   "sound": [
+    "tom",
+    "stab"
+   ]
+  },
+  {
+   "beat": 13,
+   "name": "tap",
+   "cut": false,
+   "sound": [
+    "click",
+    "stab"
+   ]
+  },
+  {
+   "beat": 14,
+   "name": "price",
+   "cut": false,
+   "sound": [
+    "stab",
+    "bell"
+   ]
+  },
+  {
+   "beat": 16,
+   "name": "lineTap",
+   "cut": false,
+   "sound": [
+    "click",
+    "crashSoft",
+    "stab"
+   ]
+  },
+  {
+   "beat": 16.5,
+   "name": "chat",
+   "cut": true,
+   "sound": [
+    "whoosh",
+    "snare"
+   ]
+  },
+  {
+   "beat": 16.75,
+   "name": "typeStart",
+   "cut": false,
+   "sound": []
+  },
+  {
+   "beat": 19,
+   "name": "send",
+   "cut": false,
+   "sound": [
+    "pop",
+    "clap"
+   ]
+  },
+  {
+   "beat": 20,
+   "name": "smart1",
+   "cut": false,
+   "sound": [
+    "stab",
+    "clap"
+   ]
+  },
+  {
+   "beat": 21,
+   "name": "smart2",
+   "cut": false,
+   "sound": [
+    "stab"
+   ]
+  },
+  {
+   "beat": 22,
+   "name": "reply",
+   "cut": false,
+   "sound": [
+    "pop",
+    "bell"
+   ]
+  },
+  {
+   "beat": 24,
+   "name": "admin",
+   "cut": true,
+   "sound": [
+    "kick",
+    "crash",
+    "whoosh"
+   ]
+  },
+  {
+   "beat": 26,
+   "name": "drop",
+   "cut": false,
+   "sound": [
+    "impactLite",
+    "stab"
+   ]
+  },
+  {
+   "beat": 27,
+   "name": "sync",
+   "cut": false,
+   "sound": [
+    "bell",
+    "pop"
+   ]
+  },
+  {
+   "beat": 28,
+   "name": "sync1",
+   "cut": false,
+   "sound": [
+    "stab",
+    "clap"
+   ]
+  },
+  {
+   "beat": 29,
+   "name": "sync2",
+   "cut": false,
+   "sound": [
+    "stab",
+    "clap"
+   ]
+  },
+  {
+   "beat": 30,
+   "name": "build",
+   "cut": false,
+   "sound": [
+    "riserStart"
+   ]
+  },
+  {
+   "beat": 31,
+   "name": "buildUp",
+   "cut": false,
+   "sound": [
+    "stab"
+   ]
+  },
+  {
+   "beat": 31.875,
+   "name": "breath",
+   "cut": false,
+   "sound": []
+  },
+  {
+   "beat": 32,
+   "name": "drop1",
+   "cut": true,
+   "sound": [
+    "impact",
+    "crash",
+    "stabBig"
+   ]
+  },
+  {
+   "beat": 32.5,
+   "name": "drop2",
+   "cut": true,
+   "sound": [
+    "stabBig"
+   ]
+  },
+  {
+   "beat": 33,
+   "name": "drop3",
+   "cut": true,
+   "sound": [
+    "stabBig"
+   ]
+  },
+  {
+   "beat": 33.5,
+   "name": "drop4",
+   "cut": true,
+   "sound": [
+    "stabBig"
+   ]
+  },
+  {
+   "beat": 34,
+   "name": "drop5",
+   "cut": true,
+   "sound": [
+    "stabBig"
+   ]
+  },
+  {
+   "beat": 34.5,
+   "name": "drop6",
+   "cut": true,
+   "sound": [
+    "stabBig"
+   ]
+  },
+  {
+   "beat": 35,
+   "name": "drop7",
+   "cut": true,
+   "sound": [
+    "stabBig"
+   ]
+  },
+  {
+   "beat": 35.5,
+   "name": "drop8",
+   "cut": true,
+   "sound": [
+    "stabBig"
+   ]
+  },
+  {
+   "beat": 36,
+   "name": "end",
+   "cut": true,
+   "sound": [
+    "impact",
+    "crash",
+    "kick",
+    "stabBig"
+   ]
+  },
+  {
+   "beat": 37,
+   "name": "cta",
+   "cut": false,
+   "sound": [
+    "pop",
+    "stab"
+   ]
+  },
+  {
+   "beat": 38,
+   "name": "handle",
+   "cut": false,
+   "sound": [
+    "bell"
+   ]
+  }
+ ]
+}

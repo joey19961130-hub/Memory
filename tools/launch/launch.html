@@ -1,0 +1,637 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="UTF-8" />
+<title>Launch video</title>
+<link rel="stylesheet" href="../../node_modules/@fontsource/noto-sans-tc/chinese-traditional-400.css" />
+<link rel="stylesheet" href="../../node_modules/@fontsource/noto-sans-tc/chinese-traditional-700.css" />
+<link rel="stylesheet" href="../../node_modules/@fontsource/noto-sans-tc/chinese-traditional-900.css" />
+<style>html,body{margin:0;background:#111;height:100%}body{display:flex;justify-content:center;align-items:center}canvas{height:100vh;width:auto}</style>
+</head>
+<body>
+<canvas id="c" width="1080" height="1920"></canvas>
+<script>
+/*
+ * Vertical (9:16) launch video. render(t) draws the frame at t seconds.
+ * Every timing comes from the shared timeline (beats) injected as window.TIMELINE, the same file that drives music.mjs.
+ * window.RECTS: element rects measured on the real site screenshots; window.BRAND: brand copy.
+ */
+const T = window.TIMELINE, RECTS = window.RECTS, BRAND = window.BRAND;
+const W = 1080, H = 1920, SPB = 60 / T.bpm;
+const EV = Object.fromEntries(T.events.map((e) => [e.name, e.beat]));
+// hard cuts + the pre-drop breath: motion blur never averages across these
+const CUTS = T.events.filter((e) => e.cut || e.name === 'breath').map((e) => e.beat).sort((x, y) => x - y);
+const C = { cream: '#F4F1EA', navy: '#1D3045', deep: '#132233', ink: '#0C1622', coral: '#E8806B', blush: '#E9B8B0', sage: '#A9C1A6', butter: '#F1D58A', lav: '#B9AEDC', sky: '#A8C6DD', line: '#06C755' };
+const PAL = [C.blush, C.sage, C.butter, C.lav, C.sky];
+const NT = '"Noto Sans TC", sans-serif', IN = '"Inter Display", "Inter", sans-serif';
+
+// ---------- math ----------
+const TAU = Math.PI * 2;
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const seg = (x, a, b) => clamp((x - a) / (b - a));
+const lerp = (a, b, k) => a + (b - a) * k;
+const eOutExpo = (x) => (x >= 1 ? 1 : 1 - Math.pow(2, -10 * x));
+const eInExpo = (x) => (x <= 0 ? 0 : Math.pow(2, 10 * x - 10));
+const eInOutCubic = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+const eOutBack = (x, s = 1.70158) => 1 + (s + 1) * Math.pow(x - 1, 3) + s * Math.pow(x - 1, 2);
+const eOutCubic = (x) => 1 - Math.pow(1 - x, 3);
+function rng(seed) { return () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; }; }
+
+// ---------- assets ----------
+const IMG = {};
+function load(key, src) {
+  return new Promise((res, rej) => { const i = new Image(); i.onload = () => { IMG[key] = i; res(); }; i.onerror = () => rej(new Error(src)); i.src = src; });
+}
+const PRODUCTS = [
+  { key: 'charm', cat: '吊飾', name: '手繪壓克力吊飾', price: 'NT$ 180', word: '可愛' },
+  { key: 'sachet', cat: '香氛', name: '香氛擴香片', price: 'NT$ 220', word: '療癒' },
+  { key: 'box', cat: '包裝', name: '禮物包裝組', price: 'NT$ 120', word: '送禮' },
+  { key: 'pin', cat: '徽章', name: '琺瑯徽章 Pin', price: 'NT$ 250', word: '收藏' },
+  { key: 'bear', cat: '娃娃', name: '療癒絨毛娃娃', price: '價格請洽詢', word: '陪伴' },
+];
+window.ready = (async () => {
+  const jobs = [];
+  for (const p of PRODUCTS) for (const v of [1, 2, 3]) jobs.push(load(`${p.key}${v}`, `../../public/demo/${p.key}-${v}.webp`));
+  for (const k of ['phone-hero', 'phone-products', 'phone-modal', 'admin-editor']) jobs.push(load(k, `assets/${k}.png`));
+  await Promise.all(jobs);
+  const texts = ['小物，大心意。', BRAND.name, BRAND.tagline, BRAND.cta, BRAND.url, '官網上線 文創選物 逛官網 挑喜歡的 看清楚價格 清楚標價 智慧詢問 一鍵詢問 自動帶入商品名稱 有現貨喔！今天下單、明天出貨 後台一改，前台同步。 官方帳號 輸入訊息 客製化 企業大量訂購 LINE 詢問 照片拖進來就上架 已同步 官網 LINE 同步上線', T.typing.text, ...PRODUCTS.flatMap((p) => [p.cat, p.name, p.price, p.word])].join('');
+  await Promise.all([400, 700, 900].map((w) => document.fonts.load(`${w} 40px "Noto Sans TC"`, texts)));
+  await document.fonts.ready;
+})();
+
+// ---------- drawing helpers ----------
+function rr(ctx, x, y, w, h, r) {
+  r = Math.min(r, w / 2, h / 2);
+  ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+}
+function cover(ctx, img, x, y, w, h, zoom = 1, ox = 0.5, oy = 0.5) {
+  const s = Math.max(w / img.width, h / img.height) * zoom;
+  const dw = img.width * s, dh = img.height * s;
+  ctx.drawImage(img, x + (w - dw) * ox, y + (h - dh) * oy, dw, dh);
+}
+function text(ctx, str, x, y, { size = 80, weight = 900, color = C.navy, align = 'center', font = NT, spacing = 0, baseline = 'alphabetic' } = {}) {
+  ctx.font = `${weight} ${size}px ${font}`;
+  ctx.fillStyle = color; ctx.textAlign = align; ctx.textBaseline = baseline;
+  ctx.letterSpacing = `${spacing}px`;
+  ctx.fillText(str, x, y);
+  ctx.letterSpacing = '0px';
+}
+/** Characters rise out of a mask one by one (stagger in beats). */
+function slamText(ctx, str, x, y, b, b0, opts = {}) {
+  const { size = 120, stagger = 0.05, dur = 0.35 } = opts;
+  ctx.save();
+  ctx.font = `${opts.weight ?? 900} ${size}px ${opts.font ?? NT}`;
+  ctx.letterSpacing = `${opts.spacing ?? 0}px`;
+  const chars = [...str];
+  const widths = chars.map((c) => ctx.measureText(c).width + (opts.spacing ?? 0));
+  const total = widths.reduce((a, b2) => a + b2, 0);
+  let cx = opts.align === 'left' ? x : opts.align === 'right' ? x - total : x - total / 2;
+  ctx.beginPath(); ctx.rect(0, y - size * 1.05, W, size * 1.35); ctx.clip();
+  chars.forEach((ch, i) => {
+    const k = eOutExpo(seg(b, b0 + i * stagger, b0 + i * stagger + dur));
+    ctx.fillStyle = opts.color ?? C.navy; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    ctx.fillText(ch, cx, y + (1 - k) * size * 1.2);
+    cx += widths[i];
+  });
+  ctx.restore();
+}
+function pill(ctx, x, y, w, h, fill, label, color = '#fff', size = 40) {
+  ctx.fillStyle = fill; rr(ctx, x - w / 2, y - h / 2, w, h, h / 2); ctx.fill();
+  text(ctx, label, x, y + size * 0.36, { size, weight: 700, color });
+}
+function finger(ctx, x, y, press = 0, alpha = 1) {
+  ctx.save(); ctx.globalAlpha = alpha;
+  ctx.fillStyle = 'rgba(0,0,0,0.18)'; ctx.beginPath(); ctx.arc(x + 6, y + 10, 40, 0, TAU); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.92)'; ctx.beginPath(); ctx.arc(x, y, 38 * (1 - press * 0.25), 0, TAU); ctx.fill();
+  ctx.strokeStyle = C.navy; ctx.lineWidth = 5; ctx.stroke();
+  ctx.restore();
+}
+function ripple(ctx, x, y, b, b0, color = C.navy) {
+  const k = seg(b, b0, b0 + 0.6);
+  if (k <= 0 || k >= 1) return;
+  ctx.save(); ctx.strokeStyle = color; ctx.globalAlpha = 1 - k; ctx.lineWidth = 6;
+  ctx.beginPath(); ctx.arc(x, y, 40 + eOutExpo(k) * 110, 0, TAU); ctx.stroke(); ctx.restore();
+}
+function arrowCursor(ctx, x, y) {
+  ctx.save(); ctx.translate(x, y);
+  ctx.fillStyle = '#fff'; ctx.strokeStyle = C.ink; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, 58); ctx.lineTo(15, 45); ctx.lineTo(26, 70); ctx.lineTo(36, 65); ctx.lineTo(25, 41); ctx.lineTo(44, 40); ctx.closePath();
+  ctx.fill(); ctx.stroke(); ctx.restore();
+}
+function grid(ctx, color, step = 90) {
+  ctx.strokeStyle = color; ctx.lineWidth = 1;
+  for (let x = step / 2; x < W; x += step) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+  for (let y = step / 2; y < H; y += step) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+}
+
+// ---------- phone ----------
+const SCR_W = 732, SHOT_W = 780, SS = SCR_W / SHOT_W, SCR_H = 1688 * SS;
+const PHONE_W = SCR_W + 28, PHONE_H = SCR_H + 28;
+/** world rect of a screenshot-space rect, for a phone whose top-left is (px,py) at scale ps */
+const shotToWorld = (r, px, py, ps) => ({ x: px + (14 + r.x * SS) * ps, y: py + (14 + r.y * SS) * ps, w: r.w * SS * ps, h: r.h * SS * ps });
+function phone(ctx, px, py, ps, drawScreen) {
+  ctx.save(); ctx.translate(px, py); ctx.scale(ps, ps);
+  ctx.save(); ctx.filter = 'blur(30px)'; ctx.fillStyle = 'rgba(12,22,34,0.35)'; rr(ctx, 30, 60, PHONE_W - 20, PHONE_H, 110); ctx.fill(); ctx.restore();
+  ctx.fillStyle = '#0E1622'; rr(ctx, 0, 0, PHONE_W, PHONE_H, 104); ctx.fill();
+  ctx.strokeStyle = '#3A4A5E'; ctx.lineWidth = 3; rr(ctx, 1.5, 1.5, PHONE_W - 3, PHONE_H - 3, 103); ctx.stroke();
+  ctx.save(); rr(ctx, 14, 14, SCR_W, SCR_H, 90); ctx.clip(); ctx.translate(14, 14);
+  drawScreen(ctx);
+  ctx.restore();
+  ctx.fillStyle = '#0E1622'; rr(ctx, PHONE_W / 2 - 110, 34, 220, 60, 30); ctx.fill();
+  ctx.restore();
+}
+function shot(ctx, key, dy = 0) { ctx.drawImage(IMG[key], 0, dy, SCR_W, IMG[key].height * SS); }
+
+// ---------- camera with focus blur ----------
+const layer = document.createElement('canvas'); layer.width = W; layer.height = H;
+const lctx = layer.getContext('2d');
+/**
+ * Draw `scene(ctx)` through a camera looking at (cx,cy) with zoom z. If `focus` is a world rect,
+ * everything outside it is blurred by `blur` px and dimmed — the depth-of-field "look here" effect.
+ */
+function camera(ctx, { cx = W / 2, cy = H / 2, z = 1, focus = null, blur = 0, rot = 0 }, scene) {
+  lctx.setTransform(1, 0, 0, 1, 0, 0); lctx.clearRect(0, 0, W, H);
+  lctx.translate(W / 2, H / 2); lctx.rotate(rot); lctx.scale(z, z); lctx.translate(-cx, -cy);
+  scene(lctx);
+  if (!focus || blur < 0.3) { ctx.drawImage(layer, 0, 0); return; }
+  ctx.save(); ctx.filter = `blur(${blur}px) saturate(0.8)`; ctx.drawImage(layer, 0, 0); ctx.restore();
+  ctx.fillStyle = `rgba(12,22,34,${0.25 * clamp(blur / 14)})`; ctx.fillRect(0, 0, W, H);
+  const fx = W / 2 + (focus.x - cx) * z, fy = H / 2 + (focus.y - cy) * z, pad = 18;
+  ctx.save(); rr(ctx, fx - pad, fy - pad, focus.w * z + pad * 2, focus.h * z + pad * 2, 28); ctx.clip();
+  ctx.drawImage(layer, 0, 0); ctx.restore();
+  ctx.save(); ctx.strokeStyle = `rgba(255,255,255,${0.9 * clamp(blur / 14)})`; ctx.lineWidth = 4;
+  rr(ctx, fx - pad, fy - pad, focus.w * z + pad * 2, focus.h * z + pad * 2, 28); ctx.stroke(); ctx.restore();
+}
+/** keyframed camera: snaps to each key on its beat with an expo ease */
+function camAt(keys, b, dur = 0.45) {
+  let cur = keys[0];
+  for (let i = 1; i < keys.length; i++) {
+    const k = keys[i];
+    if (b < k.b) break;
+    const p = eOutExpo(seg(b, k.b, k.b + dur));
+    const lf = (a, c) => (a == null || c == null ? (p < 0.5 ? a : c) : lerp(a, c, p));
+    cur = {
+      b: k.b, cx: lf(cur.cx, k.cx), cy: lf(cur.cy, k.cy), z: lf(cur.z, k.z), blur: lf(cur.blur ?? 0, k.blur ?? 0),
+      focus: k.focus && cur.focus ? { x: lerp(cur.focus.x, k.focus.x, p), y: lerp(cur.focus.y, k.focus.y, p), w: lerp(cur.focus.w, k.focus.w, p), h: lerp(cur.focus.h, k.focus.h, p) } : k.focus ?? (p < 1 ? cur.focus : null),
+    };
+  }
+  return cur;
+}
+
+// ---------- scenes ----------
+function sceneHook(ctx, b) {
+  const sub = b < 1 ? 0 : b < 2 ? 1 : b < 3 ? 2 : 3;
+  const local = b - sub;
+  if (sub < 2) {
+    ctx.fillStyle = sub === 0 ? C.coral : C.navy; ctx.fillRect(0, 0, W, H);
+    // product cut-outs orbiting the word; start mid-flight so frame 0 is already full
+    PRODUCTS.forEach((p, i) => {
+      const a = (i / 5) * TAU + (sub ? 0.6 : 0) + b * 0.35;
+      const fly = eOutExpo(clamp(local * 1.6 + 0.35));
+      const R = lerp(900, i % 2 ? 400 : 470, fly);
+      const x = W / 2 + Math.cos(a) * R * 0.95, y = 900 + Math.sin(a) * R * 1.35;
+      const r = 150 + (i % 2) * 20;
+      ctx.save(); ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.clip();
+      cover(ctx, IMG[`${p.key}${sub ? 2 : 1}`], x - r, y - r, r * 2, r * 2, 1.25);
+      ctx.restore();
+      ctx.strokeStyle = sub ? C.butter : C.cream; ctx.lineWidth = 8; ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.stroke();
+    });
+    const punch = 1 + 0.12 * (1 - eOutExpo(clamp(local * 3 + 0.25)));
+    ctx.save(); ctx.translate(W / 2, 960); ctx.scale(punch, punch);
+    text(ctx, sub ? '大心意。' : '小物，', 0, 110, { size: 290, color: sub ? C.butter : C.cream });
+    ctx.restore();
+  } else if (sub === 2) {
+    ctx.fillStyle = C.cream; ctx.fillRect(0, 0, W, H);
+    ctx.save(); grid(ctx, 'rgba(29,48,69,0.06)'); ctx.restore();
+    const k = eOutBack(clamp(local * 3 + 0.3));
+    ctx.save(); ctx.translate(W / 2, 760); ctx.scale(k, k);
+    text(ctx, BRAND.name, 0, 0, { size: 150, color: C.navy });
+    ctx.restore();
+    slamText(ctx, '文創選物 · 官網上線', W / 2, 880, local, 0.1, { size: 54, weight: 700, stagger: 0.03, color: C.coral, spacing: 6 });
+    PRODUCTS.forEach((p, i) => {
+      const kk = eOutBack(seg(local, i * 0.0625, i * 0.0625 + 0.4));
+      const s = 170 * kk, x = 120 + i * 210, y = 1080;
+      ctx.save(); rr(ctx, x - s / 2 + 90, y + (170 - s) / 2, s, s, 28); ctx.clip();
+      cover(ctx, IMG[`${p.key}1`], x - s / 2 + 90, y + (170 - s) / 2, s, s, 1.1); ctx.restore();
+    });
+  } else {
+    // whip: own colour so the cut on the beat reads; thumbnails blast outward while a navy iris opens
+    ctx.fillStyle = C.butter; ctx.fillRect(0, 0, W, H);
+    const k = eOutExpo(local);
+    PRODUCTS.forEach((p, i) => {
+      const a = (i / 5) * TAU - Math.PI / 2, d = 300 + k * 1400;
+      const s = 200 + k * 500, x = W / 2 + Math.cos(a) * d, y = 960 + Math.sin(a) * d;
+      ctx.save(); rr(ctx, x - s / 2, y - s / 2, s, s, 36); ctx.clip(); cover(ctx, IMG[`${p.key}1`], x - s / 2, y - s / 2, s, s); ctx.restore();
+    });
+    ctx.fillStyle = C.navy; ctx.beginPath(); ctx.arc(W / 2, 960, 160 + eOutExpo(local * 1.3) * 1100, 0, TAU); ctx.fill();
+    text(ctx, 'GO', W / 2, 1000, { size: 120, font: IN, color: C.cream, weight: 900 });
+  }
+}
+
+function sceneCats(ctx, b) {
+  const starts = [EV.cat1, EV.cat2, EV.cat3, EV.cat4, EV.cat5];
+  let i = 0;
+  for (let k = 0; k < starts.length; k++) if (b >= starts[k]) i = k;
+  const p = PRODUCTS[i], local = b - starts[i];
+  const kb = 1.0 + local * 0.08;
+  cover(ctx, IMG[`${p.key}1`], 0, 0, W, H, kb, 0.5, 0.55);
+  // colour wash at top for legibility
+  const g = ctx.createLinearGradient(0, 0, 0, 760); g.addColorStop(0, 'rgba(244,241,234,0.85)'); g.addColorStop(1, 'rgba(244,241,234,0)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, 760);
+  text(ctx, `0${i + 1} / 05`, W / 2, 250, { size: 40, font: IN, weight: 600, color: C.navy, spacing: 10 });
+  slamText(ctx, p.cat, W / 2, 540, local, 0, { size: 260, stagger: 0.06, dur: 0.25 });
+  // price chip from the real catalogue
+  const pk = eOutBack(seg(local, 0.12, 0.4));
+  ctx.save(); ctx.translate(W / 2, 1640); ctx.scale(pk, pk);
+  pill(ctx, 0, 0, 440, 110, C.navy, p.price, '#fff', 52);
+  ctx.restore();
+}
+
+// phone world placement for the site / chat scenes
+const PS = 0.9, PX = W / 2 - (PHONE_W * PS) / 2, PY = 330;
+function siteScreen(ctx, b) {
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, SCR_W, SCR_H);
+  if (b < EV.tap) {
+    const s = eInOutCubic(seg(b, EV.scroll, EV.scroll + 0.5));
+    if (s < 1) shot(ctx, 'phone-hero', -s * SCR_H);
+    if (s > 0) shot(ctx, 'phone-products', (1 - s) * SCR_H);
+  } else {
+    shot(ctx, 'phone-products');
+    const k = eOutExpo(seg(b, EV.tap, EV.tap + 0.45));
+    ctx.save(); ctx.globalAlpha = k; ctx.translate(SCR_W / 2, SCR_H / 2); ctx.scale(lerp(0.9, 1, k), lerp(0.9, 1, k)); ctx.translate(-SCR_W / 2, -SCR_H / 2);
+    shot(ctx, 'phone-modal'); ctx.restore();
+  }
+}
+function sceneSite(ctx, b) {
+  ctx.fillStyle = C.cream; ctx.fillRect(0, 0, W, H);
+  grid(ctx, 'rgba(29,48,69,0.05)');
+  const enter = eOutExpo(clamp((b - EV.site) * 2.2 + 0.3));
+  const py = PY + (1 - enter) * 1500;
+  const card = shotToWorld(RECTS.phoneProducts.pinCard, PX, py, PS);
+  const price = shotToWorld(RECTS.phoneModal.price, PX, py, PS);
+  const line = shotToWorld(RECTS.phoneModal.line, PX, py, PS);
+  const gal = shotToWorld(RECTS.phoneModal.gallery, PX, py, PS);
+  const priceFocus = { x: price.x, y: price.y - 10, w: 420 * PS, h: price.h + 20 };
+  const cam = camAt([
+    { b: 0, cx: W / 2, cy: H / 2, z: 1, focus: null, blur: 0 },
+    { b: EV.focus, cx: card.x + card.w / 2, cy: card.y + card.h / 2 - 40, z: 1.75, focus: card, blur: 14 },
+    { b: EV.tap, cx: W / 2, cy: gal.y + gal.h * 0.75, z: 1.15, focus: null, blur: 0 },
+    { b: EV.price, cx: price.x + 260, cy: price.y + 20, z: 2.1, focus: priceFocus, blur: 14 },
+    { b: EV.price + 1, cx: line.x + 300, cy: line.y, z: 1.9, focus: line, blur: 14 },
+  ], b);
+  // headline above the phone, swaps on the story beats
+  const head = b < EV.scroll ? ['官網上線', EV.site] : b < EV.tap ? ['挑喜歡的', EV.scroll] : ['看清楚價格', EV.tap];
+  camera(ctx, cam, (c) => {
+    c.fillStyle = C.cream; c.fillRect(-W, -H, W * 3, H * 3); grid(c, 'rgba(29,48,69,0.05)');
+    slamText(c, head[0], W / 2, 240, b, head[1], { size: 110, stagger: 0.05 });
+    phone(c, PX, py, PS, (s) => siteScreen(s, b));
+  });
+  // finger path (screen space after camera)
+  const toScreen = (x, y) => ({ x: W / 2 + (x - cam.cx) * cam.z, y: H / 2 + (y - cam.cy) * cam.z });
+  const pts = [
+    { b: EV.focus - 1, ...{ x: W + 80, y: 1500 } },
+    { b: EV.focus, x: card.x + card.w * 0.5, y: card.y + card.h * 0.3 },
+    { b: EV.price - 0.25, x: card.x + card.w * 0.5, y: card.y + card.h * 0.3 },
+    { b: EV.price, x: price.x + 300, y: price.y + price.h * 1.6 },
+    { b: EV.lineTap, x: line.x + line.w * 0.55, y: line.y + line.h * 0.5 },
+  ];
+  if (b >= pts[0].b) {
+    let p = pts[0];
+    for (let i = 1; i < pts.length; i++) {
+      if (b < pts[i - 1].b) break;
+      const k = eInOutCubic(seg(b, pts[i - 1].b + (i === 1 ? 0 : 0.35), pts[i].b));
+      p = { x: lerp(pts[i - 1].x, pts[i].x, k), y: lerp(pts[i - 1].y, pts[i].y, k) };
+    }
+    const s = toScreen(p.x, p.y);
+    const press = Math.max(1 - Math.abs(b - EV.tap) * 6, 1 - Math.abs(b - EV.lineTap) * 6, 0);
+    ripple(ctx, s.x, s.y, b, EV.tap); ripple(ctx, s.x, s.y, b, EV.lineTap, C.line);
+    finger(ctx, s.x, s.y, press);
+  }
+  // callout on the price
+  const ck = eOutBack(seg(b, EV.price, EV.price + 0.35));
+  if (ck > 0 && b < EV.price + 1) {
+    const s = toScreen(price.x + 140, price.y - 40);
+    ctx.save(); ctx.translate(s.x, s.y - 30); ctx.scale(ck, ck);
+    pill(ctx, 0, 0, 360, 104, C.coral, '清楚標價', '#fff', 50);
+    ctx.fillStyle = C.coral; ctx.beginPath(); ctx.moveTo(-20, 50); ctx.lineTo(20, 50); ctx.lineTo(0, 78); ctx.fill();
+    ctx.restore();
+  }
+}
+
+// ---------- chat (smart LINE inquiry) ----------
+function wrapLines(ctx, str, maxW) {
+  const lines = [];
+  let cur = '';
+  for (const ch of str) {
+    if (ctx.measureText(cur + ch).width > maxW && cur) { lines.push(cur); cur = ch; } else cur += ch;
+  }
+  if (cur) lines.push(cur);
+  return lines;
+}
+function bubble(ctx, str, x, y, mine, k) {
+  ctx.font = `400 34px ${NT}`;
+  const lines = wrapLines(ctx, str, 420);
+  const w = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 56, h = lines.length * 48 + 40;
+  const bx = mine ? x - w : x;
+  ctx.save(); ctx.translate(bx + (mine ? w : 0), y + h); ctx.scale(k, k); ctx.translate(-(bx + (mine ? w : 0)), -(y + h));
+  ctx.fillStyle = mine ? C.navy : '#fff'; rr(ctx, bx, y, w, h, 30); ctx.fill();
+  lines.forEach((l, i) => text(ctx, l, bx + 28, y + 64 + i * 48, { size: 34, weight: 400, color: mine ? '#fff' : C.navy, align: 'left' }));
+  ctx.restore();
+  return h;
+}
+function chatScreen(ctx, b) {
+  ctx.fillStyle = '#E9EEF4'; ctx.fillRect(0, 0, SCR_W, SCR_H);
+  // header
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, SCR_W, 230);
+  ctx.fillStyle = C.navy; ctx.beginPath(); ctx.arc(110, 160, 44, 0, TAU); ctx.fill();
+  text(ctx, BRAND.name.slice(0, 1), 110, 176, { size: 44, color: '#fff', weight: 700 });
+  text(ctx, BRAND.name, 176, 152, { size: 38, weight: 700, color: C.navy, align: 'left' });
+  text(ctx, '官方帳號', 176, 196, { size: 26, weight: 400, color: '#7B8794', align: 'left' });
+  ctx.fillStyle = 'rgba(29,48,69,0.08)'; ctx.fillRect(0, 228, SCR_W, 2);
+  // typed message in the input bar
+  const n = clamp(Math.floor((b - T.typing.start) / T.typing.step) + 1, 0, [...T.typing.text].length);
+  const typed = [...T.typing.text].slice(0, n).join('');
+  const sent = b >= EV.send;
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, SCR_H - 190, SCR_W, 190);
+  ctx.fillStyle = '#F1F4F8'; rr(ctx, 36, SCR_H - 160, SCR_W - 180, 96, 48); ctx.fill();
+  ctx.save(); ctx.beginPath(); ctx.rect(36, SCR_H - 160, SCR_W - 180, 96); ctx.clip();
+  if (!sent && typed) {
+    ctx.font = `400 34px ${NT}`;
+    const tw = ctx.measureText(typed).width, maxW = SCR_W - 240;
+    text(ctx, typed, 66 - Math.max(0, tw - maxW), SCR_H - 100, { size: 34, weight: 400, color: C.navy, align: 'left' });
+    if (Math.floor(b * 4) % 2 === 0) { ctx.fillStyle = C.navy; ctx.fillRect(68 + Math.min(tw, maxW), SCR_H - 132, 3, 44); }
+  } else if (!typed) text(ctx, '輸入訊息', 66, SCR_H - 100, { size: 34, weight: 400, color: '#9AA5B1', align: 'left' });
+  ctx.restore();
+  const sk = b >= EV.send ? 1 - eOutBack(seg(b, EV.send, EV.send + 0.3)) * 0 : 1;
+  ctx.fillStyle = typed && !sent ? C.navy : '#B8C2CC'; ctx.beginPath(); ctx.arc(SCR_W - 82, SCR_H - 112, 46 * sk, 0, TAU); ctx.fill();
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = 6; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(SCR_W - 100, SCR_H - 112); ctx.lineTo(SCR_W - 64, SCR_H - 112); ctx.moveTo(SCR_W - 80, SCR_H - 128); ctx.lineTo(SCR_W - 64, SCR_H - 112); ctx.lineTo(SCR_W - 80, SCR_H - 96); ctx.stroke();
+  // conversation
+  let y = 290;
+  text(ctx, '今天', SCR_W / 2, y, { size: 24, weight: 400, color: '#8A96A3' });
+  y += 40;
+  if (sent) {
+    const k = eOutBack(seg(b, EV.send, EV.send + 0.35));
+    // product card the site attached
+    ctx.save(); ctx.globalAlpha = clamp(k);
+    ctx.fillStyle = '#fff'; rr(ctx, SCR_W - 36 - 470, y, 470, 150, 26); ctx.fill();
+    ctx.save(); rr(ctx, SCR_W - 36 - 456, y + 14, 122, 122, 18); ctx.clip(); cover(ctx, IMG.pin1, SCR_W - 36 - 456, y + 14, 122, 122, 1.2); ctx.restore();
+    text(ctx, '琺瑯徽章 Pin', SCR_W - 36 - 316, y + 66, { size: 32, weight: 700, color: C.navy, align: 'left' });
+    text(ctx, 'NT$ 250', SCR_W - 36 - 316, y + 112, { size: 28, weight: 400, color: '#5B6B7C', align: 'left' });
+    ctx.restore();
+    y += 170;
+    y += bubble(ctx, T.typing.text, SCR_W - 36, y, true, k) + 24;
+  }
+  if (b >= EV.reply) {
+    const k = eOutBack(seg(b, EV.reply, EV.reply + 0.35));
+    bubble(ctx, '有現貨喔！今天下單、明天出貨', 36, y, false, k);
+  } else if (b >= EV.send + 0.75) {
+    // typing indicator
+    ctx.fillStyle = '#fff'; rr(ctx, 36, y, 150, 76, 38); ctx.fill();
+    for (let i = 0; i < 3; i++) { ctx.fillStyle = `rgba(29,48,69,${0.3 + 0.5 * (Math.floor(b * 4 + i) % 3 === 0)})`; ctx.beginPath(); ctx.arc(80 + i * 32, y + 38, 9, 0, TAU); ctx.fill(); }
+  }
+}
+function sceneChat(ctx, b) {
+  ctx.fillStyle = C.navy; ctx.fillRect(0, 0, W, H);
+  grid(ctx, 'rgba(255,255,255,0.05)');
+  const shrink = eOutExpo(seg(b, EV.smart1, EV.smart1 + 0.4));
+  const ps = lerp(PS, 0.68, shrink), px = W / 2 - (PHONE_W * ps) / 2, py = lerp(PY - 40 + (1 - eOutExpo(clamp((b - EV.chat) * 2.5 + 0.3))) * 300, 640, shrink);
+  phone(ctx, px, py, ps, (s) => chatScreen(s, b));
+  text(ctx, '智慧詢問', W / 2, 150 + (1 - shrink) * -200, { size: 44, weight: 700, color: C.butter, spacing: 12 });
+  if (b >= EV.smart1) slamText(ctx, '一鍵詢問', W / 2, 340, b, EV.smart1, { size: 150, color: '#fff', stagger: 0.04, dur: 0.3 });
+  if (b >= EV.smart2) slamText(ctx, '自動帶入商品名稱', W / 2, 500, b, EV.smart2, { size: 84, weight: 700, color: C.butter, stagger: 0.03, dur: 0.3 });
+  if (b < EV.smart1) {
+    // focus the typing: blur everything but the input bar
+    const k = clamp((b - EV.typeStart) * 4) * (1 - clamp((b - EV.send - 0.25) * 4));
+    if (k > 0) {
+      const bar = { x: px + 14 * ps, y: py + (14 + SCR_H - 190) * ps, w: SCR_W * ps, h: 190 * ps };
+      ctx.save(); ctx.filter = `blur(${10 * k}px)`; ctx.drawImage(ctx.canvas, 0, 0); ctx.restore();
+      ctx.fillStyle = `rgba(12,22,34,${0.3 * k})`; ctx.fillRect(0, 0, W, H);
+      ctx.save(); rr(ctx, bar.x, bar.y, bar.w, bar.h, 20); ctx.clip();
+      phone(ctx, px, py, ps, (s) => chatScreen(s, b)); ctx.restore();
+    }
+  }
+}
+
+// ---------- admin → site sync ----------
+const CROP = { x: 205, y: 540, w: 900, h: 460 };
+function sceneAdmin(ctx, b) {
+  const local = b - EV.admin;
+  ctx.fillStyle = C.deep; ctx.fillRect(0, 0, W, H);
+  grid(ctx, 'rgba(255,255,255,0.05)');
+  const build = seg(b, EV.build, EV.build + 2);
+  const shake = build * build * 14;
+  const r = rng(Math.floor(b * 8));
+  ctx.save();
+  ctx.translate(W / 2 + (r() - 0.5) * shake, H / 2 + (r() - 0.5) * shake); ctx.rotate((r() - 0.5) * build * 0.03); ctx.scale(1 - build * 0.12, 1 - build * 0.12); ctx.translate(-W / 2, -H / 2);
+  // flashing palette on 8ths in the last beat of the build
+  if (b >= EV.buildUp && b < EV.breath) { ctx.fillStyle = PAL[Math.floor(b * 2) % PAL.length]; ctx.globalAlpha = 0.35; ctx.fillRect(-W, -H, W * 3, H * 3); ctx.globalAlpha = 1; }
+  // browser window with the real admin
+  const winIn = eOutExpo(clamp(local * 2 + 0.35));
+  const WX = 40 - (1 - winIn) * 1200, WY = 230, WW = 1000, ws = WW / CROP.w, WH = CROP.h * ws + 70;
+  const drawWindow = (c) => {
+    c.fillStyle = '#fff'; rr(c, WX, WY, WW, WH, 26); c.fill();
+    c.fillStyle = '#EEF1F5'; rr(c, WX, WY, WW, 70, 26); c.fill(); c.fillRect(WX, WY + 40, WW, 30);
+    ['#FF6159', '#FFBD2E', '#28C941'].forEach((col, i) => { c.fillStyle = col; c.beginPath(); c.arc(WX + 40 + i * 32, WY + 35, 10, 0, TAU); c.fill(); });
+    c.fillStyle = '#fff'; rr(c, WX + 160, WY + 16, 600, 38, 19); c.fill();
+    text(c, `${BRAND.url}/#/admin`, WX + 184, WY + 44, { size: 22, weight: 400, color: '#5B6B7C', align: 'left', font: IN });
+    c.save(); c.beginPath(); c.rect(WX, WY + 70, WW, WH - 70); c.clip();
+    c.drawImage(IMG['admin-editor'], CROP.x, CROP.y, CROP.w, CROP.h, WX, WY + 70, WW, CROP.h * ws);
+    // the dropped photo becomes the new cover: existing thumbs shift right
+    const A = RECTS.admin;
+    const tw = (x) => WX + (x - CROP.x) * ws, th = (y) => WY + 70 + (y - CROP.y) * ws;
+    const dropK = eOutExpo(seg(b, EV.drop, EV.drop + 0.4));
+    if (dropK > 0) {
+      const t0 = A.thumbs[0], step = A.thumbs[1].x - A.thumbs[0].x;
+      c.fillStyle = '#fff'; c.fillRect(tw(t0.x) - 4, th(t0.y) - 4, step * 3 * ws + 8, t0.h * ws + 8);
+      [0, 1, 2].forEach((i) => {
+        const src = A.thumbs[i], dx = tw(src.x + step * dropK), dy = th(src.y);
+        if (i === 0) {
+          // the old cover's screenshot crop has a 封面 badge baked in; redraw it from the photo instead
+          c.save(); rr(c, dx, dy, src.w * ws, src.h * ws, 12); c.clip(); cover(c, IMG.pin1, dx, dy, src.w * ws, src.h * ws); c.restore();
+        } else c.drawImage(IMG['admin-editor'], src.x, src.y, src.w, src.h, dx, dy, src.w * ws, src.h * ws);
+      });
+      const s = eOutBack(seg(b, EV.drop, EV.drop + 0.35));
+      const cx2 = tw(t0.x) + (t0.w * ws) / 2, cy2 = th(t0.y) + (t0.h * ws) / 2, ss = t0.w * ws * s;
+      c.save(); rr(c, cx2 - ss / 2, cy2 - ss / 2, ss, ss, 14); c.clip(); cover(c, IMG.pin2, cx2 - ss / 2, cy2 - ss / 2, ss, ss); c.restore();
+      c.fillStyle = 'rgba(15,23,42,0.8)'; rr(c, tw(t0.x) + 8, th(t0.y) + 8, 64, 30, 6); c.fill();
+      text(c, '封面', tw(t0.x) + 40, th(t0.y) + 30, { size: 18, weight: 700, color: '#fff' });
+    }
+    const flash = 1 - seg(b, EV.drop, EV.drop + 0.5);
+    if (b >= EV.drop && flash > 0) {
+      const dz = A.dropzone;
+      c.fillStyle = `rgba(6,199,85,${0.25 * flash})`; rr(c, tw(dz.x), th(dz.y), dz.w * ws, dz.h * ws, 16); c.fill();
+    }
+    c.restore();
+  };
+  // phone (small) with the live site
+  const phIn = eOutExpo(clamp(local * 2 + 0.2));
+  const ps = 0.5, ppx = W / 2 - (PHONE_W * ps) / 2 + (1 - phIn) * 1100, ppy = 1095;
+  const pinImg = shotToWorld(RECTS.phoneProducts.pinImage, ppx, ppy, ps);
+  const synced = eOutExpo(seg(b, EV.sync, EV.sync + 0.4));
+  const drawPhone = (c) => phone(c, ppx, ppy, ps, (s) => {
+    shot(s, 'phone-products');
+    if (synced > 0) {
+      const r2 = RECTS.phoneProducts.pinImage;
+      s.save(); rr(s, r2.x * SS, r2.y * SS, r2.w * SS, r2.h * SS, 24); s.clip();
+      s.globalAlpha = synced; cover(s, IMG.pin2, r2.x * SS, r2.y * SS, r2.w * SS, r2.h * SS); s.restore();
+    }
+  });
+  const focusAdmin = b < EV.sync - 0.25;
+  const blurK = clamp((b - (EV.admin + 0.5)) * 3) * (b < EV.sync1 ? 1 : 1 - clamp((b - EV.sync1) * 3));
+  const blurAmt = 12 * blurK;
+  // render: blurred side first, sharp side on top
+  const sharpFirst = (fn, blurFn) => {
+    ctx.save(); if (blurAmt > 0.3) ctx.filter = `blur(${blurAmt}px)`; blurFn(ctx); ctx.restore();
+    fn(ctx);
+  };
+  if (focusAdmin) sharpFirst(drawWindow, drawPhone); else sharpFirst(drawPhone, drawWindow);
+  // the dragged photo + cursor
+  const dz = RECTS.admin.dropzone;
+  const dzX = WX + (dz.x + dz.w / 2 - CROP.x) * ws, dzY = WY + 70 + (dz.y + dz.h / 2 - CROP.y) * ws;
+  const dk = eInOutCubic(seg(b, EV.admin + 0.5, EV.drop));
+  if (b >= EV.admin + 0.25 && b < EV.drop + 0.1) {
+    const x = lerp(W + 120, dzX, dk), y = lerp(1000, dzY, dk) - Math.sin(dk * Math.PI) * 160;
+    const s = 210 * (b >= EV.drop ? 0.6 : 1);
+    ctx.save(); ctx.translate(x, y); ctx.rotate(-0.12 * (1 - dk));
+    ctx.shadowColor = 'rgba(0,0,0,0.35)'; ctx.shadowBlur = 30; ctx.shadowOffsetY = 16;
+    rr(ctx, -s / 2, -s / 2, s, s, 20); ctx.fillStyle = '#fff'; ctx.fill(); ctx.shadowColor = 'transparent';
+    ctx.save(); rr(ctx, -s / 2 + 8, -s / 2 + 8, s - 16, s - 16, 14); ctx.clip(); cover(ctx, IMG.pin2, -s / 2 + 8, -s / 2 + 8, s - 16, s - 16); ctx.restore();
+    ctx.restore();
+    arrowCursor(ctx, x + 40, y + 40);
+  } else if (b >= EV.drop && b < EV.sync) arrowCursor(ctx, dzX + 40, dzY + 40);
+  if (b < EV.drop + 0.4 && b >= EV.admin + 0.5) {
+    const lbl = eOutBack(seg(b, EV.admin + 0.5, EV.admin + 0.85));
+    ctx.save(); ctx.translate(W / 2, 160); ctx.scale(lbl, lbl); pill(ctx, 0, 0, 560, 96, C.butter, '照片拖進來就上架', C.navy, 44); ctx.restore();
+  }
+  // sync pulse from the admin window to the phone card
+  const pk = seg(b, EV.drop + 0.25, EV.sync);
+  if (pk > 0 && pk < 1) {
+    const sx = WX + WW / 2, sy = WY + WH, ex = pinImg.x + pinImg.w / 2, ey = pinImg.y + pinImg.h / 2;
+    ctx.save(); ctx.strokeStyle = 'rgba(241,213,138,0.8)'; ctx.lineWidth = 5; ctx.setLineDash([14, 14]); ctx.lineDashOffset = -b * 60;
+    ctx.beginPath(); ctx.moveTo(sx, sy); ctx.bezierCurveTo(sx, sy + 160, ex, ey - 200, ex, ey); ctx.stroke(); ctx.setLineDash([]);
+    const q = eInOutCubic(pk), qx = (1 - q) ** 3 * sx + 3 * (1 - q) ** 2 * q * sx + 3 * (1 - q) * q * q * ex + q ** 3 * ex;
+    const qy = (1 - q) ** 3 * sy + 3 * (1 - q) ** 2 * q * (sy + 160) + 3 * (1 - q) * q * q * (ey - 200) + q ** 3 * ey;
+    ctx.fillStyle = C.butter; ctx.shadowColor = C.butter; ctx.shadowBlur = 30; ctx.beginPath(); ctx.arc(qx, qy, 16, 0, TAU); ctx.fill();
+    ctx.restore();
+  }
+  if (b >= EV.sync) {
+    const k = seg(b, EV.sync, EV.sync + 0.8);
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * TAU, d = 30 + eOutExpo(k) * 140;
+      ctx.fillStyle = PAL[i % 5]; ctx.globalAlpha = 1 - k;
+      ctx.beginPath(); ctx.arc(pinImg.x + pinImg.w / 2 + Math.cos(a) * d, pinImg.y + pinImg.h / 2 + Math.sin(a) * d, 10, 0, TAU); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    const tag = eOutBack(seg(b, EV.sync, EV.sync + 0.3));
+    ctx.save(); ctx.translate(pinImg.x + pinImg.w / 2, pinImg.y - 40); ctx.scale(tag, tag); pill(ctx, 0, 0, 220, 70, C.line, '已同步', '#fff', 34); ctx.restore();
+  }
+  if (b >= EV.sync1) slamText(ctx, '後台一改，', 90, 945, b, EV.sync1, { size: 96, color: '#fff', align: 'left', stagger: 0.04 });
+  if (b >= EV.sync2) slamText(ctx, '前台同步。', W - 90, 1055, b, EV.sync2, { size: 96, color: C.butter, align: 'right', stagger: 0.04 });
+  ctx.restore();
+  // the breath before the drop: near-black for the last 16th, matching the music gap
+  if (b >= EV.breath) { ctx.fillStyle = C.ink; ctx.fillRect(0, 0, W, H); }
+}
+
+function sceneDrop(ctx, b) {
+  const starts = [32, 32.5, 33, 33.5, 34, 34.5, 35, 35.5];
+  let i = 0;
+  for (let k = 0; k < starts.length; k++) if (b >= starts[k]) i = k;
+  const local = b - starts[i];
+  const punch = 1 + 0.1 * (1 - eOutExpo(seg(local, 0, 0.3)));
+  ctx.save(); ctx.translate(W / 2, H / 2); ctx.scale(punch, punch); ctx.rotate((i % 2 ? 1 : -1) * 0.015 * (1 - local * 2)); ctx.translate(-W / 2, -H / 2);
+  if (i < 5) {
+    const p = PRODUCTS[i];
+    cover(ctx, IMG[`${p.key}3`], 0, 0, W, H, 1.05 + local * 0.1);
+    ctx.save(); ctx.shadowColor = 'rgba(12,22,34,0.45)'; ctx.shadowBlur = 40;
+    text(ctx, p.word, W / 2, 1120, { size: 330, color: '#fff' }); ctx.restore();
+  } else if (i === 5) {
+    ctx.fillStyle = C.navy; ctx.fillRect(0, 0, W, H);
+    const keys = ['charm2', 'sachet2', 'box2', 'bear2'], g = 16, cw = (W - g * 3) / 2, ch = (H - g * 3) / 2;
+    keys.forEach((k, j) => {
+      const x = g + (j % 2) * (cw + g), y = g + Math.floor(j / 2) * (ch + g), kk = eOutExpo(seg(local, j * 0.0625, j * 0.0625 + 0.3));
+      ctx.save(); rr(ctx, x, y, cw, ch, 24); ctx.clip(); cover(ctx, IMG[k], x, y, cw, ch, 1.3 - kk * 0.2); ctx.restore();
+    });
+  } else if (i === 6) {
+    ctx.fillStyle = C.coral; ctx.fillRect(0, 0, W, H);
+    text(ctx, '客製化', W / 2, 960, { size: 250, color: '#fff' });
+    text(ctx, '企業大量訂購', W / 2, 1120, { size: 70, weight: 700, color: C.navy, spacing: 10 });
+  } else {
+    ctx.fillStyle = C.line; ctx.fillRect(0, 0, W, H);
+    text(ctx, 'LINE 詢問', W / 2, 1010, { size: 190, color: '#fff' });
+    ripple(ctx, W / 2, 1300, b, 35.5, '#fff');
+    finger(ctx, W / 2, 1300, 1 - seg(local, 0, 0.2));
+  }
+  ctx.restore();
+  // white flash on the downbeat of the drop
+  const fl = 1 - seg(b, 32, 32.12);
+  if (fl > 0 && b >= 32) { ctx.fillStyle = `rgba(255,255,255,${fl})`; ctx.fillRect(0, 0, W, H); }
+}
+
+const CONFETTI = (() => { const r = rng(9); return Array.from({ length: 90 }, () => ({ a: r() * TAU, v: 500 + r() * 1100, s: 10 + r() * 18, c: PAL[(r() * 5) | 0], spin: (r() - 0.5) * 12, k: r() < 0.5 })); })();
+function sceneEnd(ctx, b) {
+  const local = b - EV.end;
+  ctx.fillStyle = C.navy; ctx.fillRect(0, 0, W, H);
+  grid(ctx, 'rgba(255,255,255,0.04)');
+  // confetti burst from the logo slam
+  const ct = local * SPB;
+  for (const p of CONFETTI) {
+    const x = W / 2 + Math.cos(p.a) * p.v * ct * (1 - ct * 0.25), y = 820 + Math.sin(p.a) * p.v * ct * 0.8 + 700 * ct * ct;
+    ctx.save(); ctx.globalAlpha = clamp(1.8 - ct); ctx.translate(x, y); ctx.rotate(p.spin * ct); ctx.fillStyle = p.c;
+    if (p.k) ctx.fillRect(-p.s / 2, -p.s / 4, p.s, p.s / 2); else { ctx.beginPath(); ctx.arc(0, 0, p.s / 2, 0, TAU); ctx.fill(); }
+    ctx.restore();
+  }
+  const slam = eOutBack(seg(local, 0, 0.35), 2.2);
+  ctx.save(); ctx.translate(W / 2, 860); ctx.scale(lerp(1.6, 1, slam), lerp(1.6, 1, slam)); ctx.globalAlpha = clamp(slam * 2);
+  text(ctx, BRAND.name, 0, 0, { size: 160, color: C.cream });
+  ctx.restore();
+  ctx.save(); ctx.globalAlpha = eOutExpo(seg(local, 0.4, 0.9));
+  text(ctx, BRAND.tagline, W / 2, 980 + (1 - eOutExpo(seg(local, 0.4, 0.9))) * 30, { size: 46, weight: 400, color: 'rgba(244,241,234,0.8)', spacing: 4 });
+  ctx.restore();
+  const ck = eOutBack(seg(b, EV.cta, EV.cta + 0.35));
+  if (ck > 0) { ctx.save(); ctx.translate(W / 2, 1220); ctx.scale(ck, ck); pill(ctx, 0, 0, 600, 140, C.line, `${BRAND.cta}  →`, '#fff', 56); ctx.restore(); }
+  const hk = eOutExpo(seg(b, EV.handle, EV.handle + 0.5));
+  if (hk > 0) {
+    ctx.save(); ctx.globalAlpha = hk;
+    text(ctx, '官網 · LINE 同步上線', W / 2, 1420, { size: 44, weight: 700, color: C.butter, spacing: 8 });
+    text(ctx, BRAND.url, W / 2, 1490, { size: 38, weight: 500, color: 'rgba(244,241,234,0.65)', font: IN, spacing: 2 });
+    ctx.restore();
+  }
+}
+
+// ---------- compositor ----------
+const canvas = document.getElementById('c');
+const main = canvas.getContext('2d');
+const acc = document.createElement('canvas'); acc.width = W; acc.height = H;
+const actx = acc.getContext('2d');
+function drawFrame(ctx, t) {
+  const b = t / SPB;
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.filter = 'none'; ctx.globalAlpha = 1;
+  if (b < EV.cat1) sceneHook(ctx, b);
+  else if (b < EV.site) sceneCats(ctx, b);
+  else if (b < EV.chat) sceneSite(ctx, b);
+  else if (b < EV.admin) sceneChat(ctx, b);
+  else if (b < EV.drop1) sceneAdmin(ctx, b);
+  else if (b < EV.end) sceneDrop(ctx, b);
+  else sceneEnd(ctx, b);
+}
+/** Motion blur by averaging sub-frames, never across a hard cut (sub-frames are clamped to the current shot). */
+function render(t, samples = 1) {
+  if (samples <= 1) { drawFrame(main, t); return; }
+  const b = t / SPB;
+  const segStart = Math.max(...CUTS.filter((c) => c <= b + 1e-6)) * SPB;
+  const next = CUTS.find((c) => c > b + 1e-6);
+  const segEnd = (next ?? T.beats) * SPB - 1e-4;
+  for (let s = 0; s < samples; s++) {
+    const ts = clamp(t + ((s + 0.5) / samples - 0.5) * (0.5 / T.fps), segStart, segEnd);
+    drawFrame(actx, ts);
+    main.globalAlpha = 1 / (s + 1); main.drawImage(acc, 0, 0);
+  }
+  main.globalAlpha = 1;
+}
+window.render = render;
+window.frameData = (t, samples) => { render(t, samples); return canvas.toDataURL('image/jpeg', 0.95); };
+</script>
+</body>
+</html>

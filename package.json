@@ -7,7 +7,12 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "art": "node tools/product-art/render.mjs",
+    "launch:capture": "node tools/launch/capture.mjs",
+    "launch:music": "node tools/launch/music.mjs",
+    "launch:render": "node tools/launch/render.mjs",
+    "launch:sync": "node tools/launch/sync.mjs tools/launch/assets/music.wav media/launch-video.mp4"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",
