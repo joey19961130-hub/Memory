@@ -354,7 +354,13 @@ const SETTING_GROUPS: { title: string; fields: { key: TextKey; label: string; hi
   },
   {
     title: '首頁影片',
-    fields: [{ key: 'videoUrl', label: '背景影片網址（mp4）', hint: '需允許跨網域 (CORS) 才能逐格順暢捲動；否則會自動改用一般影片模式' }],
+    fields: [
+      {
+        key: 'videoUrl',
+        label: '背景影片網址（mp4）',
+        hint: '預設：hero-showreel.mp4（動態圖像影片）。原本的雲景影片網址請見 README。外部影片需允許跨網域 (CORS) 才能逐格順暢捲動，否則自動改用一般影片模式',
+      },
+    ],
   },
   {
     title: '首頁第一段',

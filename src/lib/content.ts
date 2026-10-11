@@ -1,6 +1,10 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
-export const DEFAULT_VIDEO_URL =
+/** 15-second motion-graphics showreel rendered by tools/showreel (same origin, so the frame bank never hits CORS). */
+export const DEFAULT_VIDEO_URL = 'hero-showreel.mp4';
+
+/** The original aerial cloud clip, kept as an alternative the admin can switch back to. */
+export const CLOUD_VIDEO_URL =
   'https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260821_114821_a8ca298f-be2c-4613-a4dd-51b69e16bbde.mp4';
 
 export interface SiteSettings {

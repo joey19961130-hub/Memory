@@ -38,16 +38,45 @@ npm run build      # 產生 dist/ 可上傳到任何靜態主機
 - **LINE 官方帳號 ID**（例如 `@abc1234`）：填了之後，客人按任一商品的「LINE 詢問」，會開啟官方帳號聊天並自動帶入「您好，我想詢問「商品名稱」」。
 - **LINE 加好友連結**（例如 `https://lin.ee/xxxx`）：沒有填官方帳號 ID 時使用。
 
-## 背景影片
+## 背景影片（程式渲染的 15 秒動態影片）
 
-預設使用指定的雲景空拍影片。可在後台換成自己的 mp4 網址。
-逐格順暢捲動需要影片主機允許跨網域（CORS）；若不允許，網站會自動改用一般影片定位方式，仍可正常顯示。
+首頁背景預設是 `public/hero-showreel.mp4`：用程式逐格渲染的 15 秒動態圖像影片，跟著捲動播放。
+節奏配合首頁三段文字：前段淡色（深藍文字清楚），最後轉為深藍夜空（白色文字清楚），中間文字帶保持乾淨。
+
+- `media/showreel.mp4`：同一支影片加上動態標題的作品集版本，可以單獨分享。
+- 修改影片：編輯 `tools/showreel/showreel.html`（直接用瀏覽器打開可即時預覽，網址加 `?titles=1` 看標題版），再執行：
+  ```bash
+  node tools/showreel/render.mjs                              # 重新產生網站背景版
+  node tools/showreel/render.mjs --titles media/showreel.mp4  # 重新產生作品集版
+  ```
+  需要 Playwright（Chromium）與 ffmpeg。
+- 想換回原本的雲景空拍影片，到後台「首頁影片」貼上：
+  `https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260821_114821_a8ca298f-be2c-4613-a4dd-51b69e16bbde.mp4`
+  外部影片需允許跨網域（CORS）才能逐格順暢捲動；不允許時會自動改用一般影片定位方式。
+
+## 動態效果一覽
+
+| 區塊 | 效果 |
+|---|---|
+| 進站 | 載入動畫：彩色圓點彈跳 → 品牌名逐字浮現 → 布幕向上掀開 |
+| 首頁（Parallax） | 背景與文字分層跟著滑鼠移動（越前面的層移動越多）、捲動時各層不同速度位移、背景緩慢推近；標題逐字浮現 |
+| 首頁第二、三段 | 逐字浮現；強調文字與兩行標題以不同速度滑入（文字視差） |
+| 商品一覽（Scroll-triggered） | 標題逐字＋畫線、商品卡片依序浮上、照片由下往上展開；分類切換有滑動底色、切換後重新依序出現 |
+| 商品詳情 | 電腦版縮放淡入、手機版由下往上滑出；內容依序出現 |
+| 品牌故事 | 照片框展開＋捲動視差、文字浮現 |
+| 導覽列 | 進場滑入、滑過時底線展開 |
+
+手機（觸控）不啟用滑鼠視差；系統開啟「減少動態效果」時，所有動畫會自動關閉、內容直接顯示。
 
 ## 檔案結構
 
 ```
 src/App.tsx               前台：捲動影片場景 + 各區塊
 src/useVideoScrub.ts      捲動驅動影片（WebCodecs 解碼成影格庫、lerp 平滑、LRU 快取、失敗自動退回）
+src/lib/motion.ts         動畫工具：進入畫面偵測、捲動視差、滑鼠視差
+src/components/Reveal.tsx 捲動觸發動畫、逐字浮現、畫線
+src/components/Loader.tsx 進站載入動畫
+tools/showreel/           背景影片的原始碼與渲染腳本
 src/lib/mp4demux.ts       mp4box 解析影片
 src/lib/content.ts        資料存取（Supabase／示範模式）、LINE 連結、價格格式
 src/components/           導覽列、手機選單、商品目錄、品牌故事、聯絡區

@@ -62,16 +62,16 @@ export function Navbar({
               key={link.label}
               href={href}
               {...(isExternal(href) ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
-              className="relative text-xs tracking-[0.15em] uppercase font-medium hover:opacity-70 transition-opacity"
+              className="group relative text-xs tracking-[0.15em] uppercase font-medium hover:opacity-70 transition-opacity"
               style={entrance(shown, i * 80 + 100)}
             >
               {link.label}
-              {i === 0 && (
-                <span
-                  className="absolute left-0 right-0 -bottom-3 h-[2px] transition-colors duration-500"
-                  style={{ backgroundColor: color }}
-                />
-              )}
+              <span
+                className={`absolute left-0 right-0 -bottom-3 h-[2px] origin-left transition-[transform,background-color] duration-500 ${
+                  i === 0 ? '' : 'scale-x-0 group-hover:scale-x-100'
+                }`}
+                style={{ backgroundColor: color, transitionTimingFunction: 'cubic-bezier(0.16,1,0.3,1)' }}
+              />
             </a>
           );
         })}
