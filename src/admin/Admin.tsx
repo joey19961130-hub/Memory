@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { ArrowDown, ChevronUp, ExternalLink, Monitor, Smartphone, X } from 'lucide-react';
 import {
-  DEFAULT_SETTINGS,
   deleteProduct,
   formatPrice,
   isDemoMode,
@@ -15,7 +14,7 @@ import {
   type SiteSettings,
 } from '@/lib/content';
 import { DARK, placeholderTone } from '@/lib/theme';
-import { GalleryInput, ImageInput, VideoInput, errorText, inputCls } from '@/admin/Uploads';
+import { GalleryInput, ImageInput, errorText, inputCls } from '@/admin/Uploads';
 import type { PreviewMessage, PreviewTarget } from '@/lib/preview';
 
 const btnPrimary =
@@ -427,10 +426,10 @@ const SETTING_GROUPS: {
       { key: 'lineUrl', label: 'LINE 加好友連結', hint: '例如 https://lin.ee/xxxx（沒填官方帳號 ID 時使用）' },
     ],
   },
-  { title: '首頁影片', target: 'hero', fields: [] },
+  { title: '首頁照片牆與互動', target: 'hero', fields: [{ key: 'heroHint', label: '互動提示文字', hint: '顯示在首頁下方，引導訪客把光暈移到 Logo' }] },
   {
     title: '首頁第一段',
-    target: 'hero',
+    target: 's1',
     fields: [
       { key: 'heroTitle', label: '大標題' },
       { key: 'heroSubtitle', label: '副標題' },
@@ -510,7 +509,7 @@ function SettingsTab({ settings, onSaved }: { settings: SiteSettings; onSaved: (
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    const next = { ...draft, videoUrl: s.videoUrl.trim() || DEFAULT_SETTINGS.videoUrl };
+    const next = { ...draft };
     setBusy(true);
     setMsg(null);
     try {
@@ -538,18 +537,28 @@ function SettingsTab({ settings, onSaved }: { settings: SiteSettings; onSaved: (
             <legend className="text-sm font-semibold px-1">{g.title}</legend>
             {g.title === '品牌與 LINE' && (
               <>
-                <Block label="Logo" hint="建議透明背景 PNG 或 SVG。顯示在導覽列、載入畫面與瀏覽器分頁圖示；沒有 Logo 時顯示品牌名稱">
+                <Block label="完整 Logo（圖形＋文字）" hint="顯示在導覽列與載入畫面。建議透明背景 SVG 或 PNG">
                   <ImageInput value={s.logoUrl} folder="logo" onChange={(v) => set('logoUrl', v)} checker />
                 </Block>
-                <label className="flex items-center gap-2 text-sm">
-                  <input type="checkbox" checked={s.logoInvert} onChange={(e) => set('logoInvert', e.target.checked)} />
-                  首頁深色段落時，Logo 自動轉成白色
-                </label>
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <Block label="Logo 圖形（直立）" hint="首頁中央的水滴；吸入光暈時會轉成橫向（鼻子）。也是瀏覽器分頁圖示">
+                    <ImageInput value={s.logoMarkUrl} folder="logo" onChange={(v) => set('logoMarkUrl', v)} checker />
+                  </Block>
+                  <Block label="文字 Logo" hint="首頁圖形下方的品牌字">
+                    <ImageInput value={s.logoWordUrl} folder="logo" onChange={(v) => set('logoWordUrl', v)} checker />
+                  </Block>
+                </div>
               </>
             )}
-            {g.title === '首頁影片' && (
-              <Block label="背景影片（MP4）" hint="捲動時逐格播放。外部網址需允許跨網域 (CORS) 才能最順暢，否則自動改用一般影片模式">
-                <VideoInput value={s.videoUrl} defaultUrl={DEFAULT_SETTINGS.videoUrl} onChange={(v) => set('videoUrl', v)} />
+            {g.title === '首頁照片牆與互動' && (
+              <Block label={`首頁照片牆（${s.heroWall.length} 張，建議 6–9 張）`} hint="平常是暗的黑白，光暈經過的地方變彩色；Logo 吸入光暈後整面變全彩">
+                <GalleryInput
+                  value={s.heroWall}
+                  onChange={(v) => set('heroWall', v)}
+                  folder="site"
+                  label="首頁照片牆（拖曳排序）"
+                  hint="可一次拖進多張 · 拖曳縮圖調整位置順序 · 超過 9 張只顯示前 9 張"
+                />
               </Block>
             )}
             {g.fields.map((f) => (

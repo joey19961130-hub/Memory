@@ -35,7 +35,7 @@ export function useInView<T extends Element>(threshold = 0.15): [RefObject<T>, b
  * Scroll parallax: translates the element by `speed` × its distance from the viewport centre.
  * Writes the transform directly so scrolling never re-renders React.
  */
-export function useScrollParallax<T extends HTMLElement>(speed: number): RefObject<T> {
+export function useScrollParallax<T extends HTMLElement>(speed: number, axis: 'x' | 'y' = 'y'): RefObject<T> {
   const ref = useRef<T>(null);
   useEffect(() => {
     const el = ref.current;
@@ -46,7 +46,8 @@ export function useScrollParallax<T extends HTMLElement>(speed: number): RefObje
       const parent = el.parentElement ?? el;
       const r = parent.getBoundingClientRect();
       const offset = r.top + r.height / 2 - window.innerHeight / 2;
-      el.style.transform = `translate3d(0, ${(-offset * speed).toFixed(1)}px, 0)`;
+      const d = (-offset * speed).toFixed(1);
+      el.style.transform = axis === 'y' ? `translate3d(0, ${d}px, 0)` : `translate3d(${d}px, 0, 0)`;
     };
     const schedule = () => {
       if (!raf) raf = requestAnimationFrame(update);
@@ -59,7 +60,7 @@ export function useScrollParallax<T extends HTMLElement>(speed: number): RefObje
       window.removeEventListener('scroll', schedule);
       window.removeEventListener('resize', schedule);
     };
-  }, [speed]);
+  }, [speed, axis]);
   return ref;
 }
 

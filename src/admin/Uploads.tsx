@@ -1,6 +1,6 @@
 import { useRef, useState, type DragEvent, type ReactNode } from 'react';
-import { ImagePlus, Star, Trash2, ChevronLeft, ChevronRight, Film, Upload } from 'lucide-react';
-import { uploadImage, uploadVideo, isDemoMode, type UploadFolder } from '@/lib/content';
+import { ImagePlus, Star, Trash2, ChevronLeft, ChevronRight, Upload } from 'lucide-react';
+import { uploadImage, type UploadFolder } from '@/lib/content';
 
 export const errorText = (e: unknown) =>
   e instanceof Error
@@ -153,7 +153,19 @@ export function ImageInput({
 }
 
 /** Multi-photo manager: drop many files, drag thumbnails to reorder, first = cover. */
-export function GalleryInput({ value, onChange }: { value: string[]; onChange: (urls: string[]) => void }) {
+export function GalleryInput({
+  value,
+  onChange,
+  folder = 'products',
+  label = '商品照片（拖曳排序）',
+  hint = '第一張是封面 · 可拖曳縮圖調整順序 · 點 ★ 設為封面',
+}: {
+  value: string[];
+  onChange: (urls: string[]) => void;
+  folder?: UploadFolder;
+  label?: string;
+  hint?: string;
+}) {
   const [pending, setPending] = useState(0);
   const [err, setErr] = useState('');
   const [dragIdx, setDragIdx] = useState<number | null>(null);
@@ -164,7 +176,7 @@ export function GalleryInput({ value, onChange }: { value: string[]; onChange: (
   const onFiles = async (files: File[]) => {
     setErr('');
     setPending((n) => n + files.length);
-    const results = await Promise.allSettled(files.map((f) => uploadImage(f, 'products')));
+    const results = await Promise.allSettled(files.map((f) => uploadImage(f, folder)));
     setPending((n) => n - files.length);
     const ok = results.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : []));
     const failed = results.filter((r) => r.status === 'rejected') as PromiseRejectedResult[];
@@ -183,7 +195,7 @@ export function GalleryInput({ value, onChange }: { value: string[]; onChange: (
   return (
     <div className="space-y-3">
       {value.length > 0 && (
-        <ul className="grid grid-cols-3 sm:grid-cols-4 gap-2" aria-label="商品照片（拖曳排序）">
+        <ul className="grid grid-cols-3 sm:grid-cols-4 gap-2" aria-label={label}>
           {value.map((url, i) => (
             <li
               key={url + i}
@@ -241,10 +253,10 @@ export function GalleryInput({ value, onChange }: { value: string[]; onChange: (
           ))}
         </ul>
       )}
-      <DropZone accept="image/*" multiple onFiles={onFiles} label="上傳商品照片" className="p-5">
+      <DropZone accept="image/*" multiple onFiles={onFiles} label={folder === 'products' ? '上傳商品照片' : '上傳首頁照片'} className="p-5">
         <Upload className="text-slate-400" size={24} />
         <span className="text-sm text-slate-600">拖曳多張照片到這裡，或點擊選擇</span>
-        <span className="text-xs text-slate-400">第一張是封面 · 可拖曳縮圖調整順序 · 點 ★ 設為封面</span>
+        <span className="text-xs text-slate-400">{hint}</span>
         {pending > 0 && value.length === 0 && <span className="text-xs text-slate-500">上傳中（{pending}）…</span>}
       </DropZone>
       {err && <p className="text-xs text-red-600">{err}</p>}
@@ -252,42 +264,3 @@ export function GalleryInput({ value, onChange }: { value: string[]; onChange: (
   );
 }
 
-/** Hero video: upload (Supabase) or paste URL, with an inline preview. */
-export function VideoInput({ value, onChange, defaultUrl }: { value: string; onChange: (url: string) => void; defaultUrl: string }) {
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState('');
-  const onFiles = async ([file]: File[]) => {
-    setBusy(true);
-    setErr('');
-    try {
-      onChange(await uploadVideo(file));
-    } catch (e) {
-      setErr(errorText(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-  return (
-    <div className="space-y-2">
-      <DropZone accept="video/mp4" onFiles={onFiles} disabled={busy || isDemoMode} label="上傳背景影片" className="p-3 min-h-[120px]">
-        {value ? (
-          <video key={value} src={value} muted playsInline preload="metadata" className="w-full h-32 rounded-lg object-cover bg-slate-100" />
-        ) : (
-          <Film className="text-slate-400" size={28} />
-        )}
-        <span className="text-xs text-slate-500">
-          {isDemoMode ? '示範模式不能上傳影片，可貼網址' : busy ? '影片上傳中，請稍候…' : '拖曳 MP4 影片到這裡，或點擊選擇（50MB 內）'}
-        </span>
-      </DropZone>
-      <div className="flex gap-2 items-center">
-        <input className={inputCls} value={value} onChange={(e) => onChange(e.target.value)} placeholder="或貼上 mp4 網址" />
-        {value !== defaultUrl && (
-          <button type="button" className="shrink-0 text-xs text-slate-600 hover:underline" onClick={() => onChange(defaultUrl)}>
-            還原預設
-          </button>
-        )}
-      </div>
-      {err && <p className="text-xs text-red-600">{err}</p>}
-    </div>
-  );
-}

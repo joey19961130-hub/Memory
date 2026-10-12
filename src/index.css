@@ -88,3 +88,61 @@ body {
     transition: none;
   }
 }
+
+/* ---------------- aura hero ---------------- */
+.aura-blob {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(70px);
+  opacity: 0.85;
+  animation: aura-drift 24s ease-in-out infinite alternate;
+}
+@keyframes aura-drift {
+  0% { transform: translate3d(0, 0, 0) scale(1); }
+  50% { transform: translate3d(6vw, -4vh, 0) scale(1.12); }
+  100% { transform: translate3d(-5vw, 5vh, 0) scale(0.94); }
+}
+.aura-hero[data-done='true'] .aura-blob { opacity: 1; filter: blur(60px) saturate(1.35); }
+
+/* the wall: dark black-and-white everywhere… */
+.aura-mono .aura-card img { filter: grayscale(1) brightness(0.58) contrast(1.08); }
+/* …and full colour inside the halo */
+.aura-color {
+  -webkit-mask-image: radial-gradient(circle at var(--cx, -999px) var(--cy, -999px), #000 0, #000 calc(var(--cr, 0px) * 0.55), transparent var(--cr, 0px));
+  mask-image: radial-gradient(circle at var(--cx, -999px) var(--cy, -999px), #000 0, #000 calc(var(--cr, 0px) * 0.55), transparent var(--cr, 0px));
+}
+.aura-hero[data-done='true'] .aura-color { -webkit-mask-image: none; mask-image: none; }
+.aura-hero[data-done='true'] .aura-mono { opacity: 0; transition: opacity 600ms ease; }
+
+.aura-halo {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: calc(var(--hr, 0px) * 2.3);
+  height: calc(var(--hr, 0px) * 2.3);
+  transform: translate(calc(var(--hx, -999px) - 50%), calc(var(--hy, -999px) - 50%));
+  border-radius: 9999px;
+  background: conic-gradient(from var(--hrot, 0deg), #E9B8B0, #F1D58A, #A9C1A6, #A8C6DD, #B9AEDC, #E8806B, #E9B8B0);
+  -webkit-mask-image: radial-gradient(circle, #000 25%, transparent 70%);
+  mask-image: radial-gradient(circle, #000 25%, transparent 70%);
+  filter: blur(18px) saturate(1.2);
+  opacity: 0.95;
+  mix-blend-mode: multiply;
+}
+.aura-hero[data-done='true'] .aura-halo { display: none; }
+
+.aura-mark { transform-origin: 50% 50%; will-change: transform; filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.08)); }
+.aura-word { opacity: 0.95; }
+
+.aura-wiggle { animation: aura-wiggle 2.4s ease-in-out infinite; }
+@keyframes aura-wiggle {
+  0%, 100% { transform: rotate(0deg) translateX(0); }
+  25% { transform: rotate(-12deg) translateX(-2px); }
+  75% { transform: rotate(12deg) translateX(2px); }
+}
+.aura-fade-in { animation: aura-fade-in 700ms ease both 800ms; }
+@keyframes aura-fade-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .aura-blob, .aura-wiggle { animation: none; }
+}

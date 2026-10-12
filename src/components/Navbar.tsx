@@ -17,14 +17,12 @@ export function Navbar({
   isLight,
   lineHref,
   logoUrl,
-  logoInvert,
   brandName,
   onOpenMenu,
 }: {
   isLight: boolean;
   lineHref: string;
   logoUrl: string;
-  logoInvert: boolean;
   brandName: string;
   onOpenMenu: () => void;
 }) {
@@ -66,7 +64,7 @@ export function Navbar({
             src={logoUrl}
             alt={brandName}
             className="h-7 sm:h-8 w-auto max-w-[140px] object-contain transition-[filter] duration-500"
-            style={{ filter: isLight && logoInvert ? 'brightness(0) invert(1)' : 'none' }}
+            style={{ filter: isLight ? 'brightness(0) invert(1)' : 'none' }}
           />
         </a>
       )}

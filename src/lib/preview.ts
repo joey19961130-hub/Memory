@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { Product, SiteSettings } from '@/lib/content';
 
 /** Where the admin wants the preview iframe to look while a given form group is being edited. */
-export type PreviewTarget = 'hero' | 's2' | 's3' | 'products' | 'product' | 'about' | 'contact';
+export type PreviewTarget = 'hero' | 's1' | 's2' | 's3' | 'products' | 'product' | 'about' | 'contact';
 
 export type PreviewMessage =
   | { type: 'preview-ready' }

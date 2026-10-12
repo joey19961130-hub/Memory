@@ -1,23 +1,21 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
-/** 15-second motion-graphics showreel rendered by tools/showreel (same origin, so the frame bank never hits CORS). */
-export const DEFAULT_VIDEO_URL = 'hero-showreel.mp4';
-
-/** The original aerial cloud clip, kept as an alternative the admin can switch back to. */
-export const CLOUD_VIDEO_URL =
-  'https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260821_114821_a8ca298f-be2c-4613-a4dd-51b69e16bbde.mp4';
-
 export interface SiteSettings {
   brandName: string;
-  /** 品牌 Logo（顯示在導覽列、載入畫面、瀏覽器分頁圖示）；空白則顯示品牌名稱文字 */
+  /** 完整 Logo（圖形＋文字），顯示在導覽列與載入畫面 */
   logoUrl: string;
-  /** 深色背景（首頁後段）時把 Logo 轉成白色 */
-  logoInvert: boolean;
+  /** Logo 圖形（直立的水滴）。首頁中央會把它轉成橫向（鼻子）吸入光暈；也是瀏覽器分頁圖示 */
+  logoMarkUrl: string;
+  /** 文字 Logo，顯示在首頁圖形下方 */
+  logoWordUrl: string;
+  /** 首頁照片牆：平常是暗的黑白，光暈經過處變彩色，Logo 吸入光暈後全部變全彩 */
+  heroWall: string[];
+  /** 首頁互動提示文字 */
+  heroHint: string;
   /** LINE 官方帳號 ID（例如 @abc1234）。有填時，詢問按鈕會自動帶入商品名稱。 */
   lineId: string;
   /** LINE 加好友連結（例如 https://lin.ee/xxxx），沒填 lineId 時使用。 */
   lineUrl: string;
-  videoUrl: string;
   heroTitle: string;
   heroSubtitle: string;
   s2Lead: string;
@@ -54,18 +52,30 @@ export interface Product {
 }
 
 export const DEFAULT_SETTINGS: SiteSettings = {
-  brandName: '品牌名稱',
-  logoUrl: '',
-  logoInvert: true,
+  brandName: 'memorycollector',
+  logoUrl: 'brand/logo.svg',
+  logoMarkUrl: 'brand/mark.svg',
+  logoWordUrl: 'brand/wordmark.svg',
+  heroWall: [
+    'demo/charm-1.webp',
+    'demo/sachet-2.webp',
+    'demo/box-1.webp',
+    'demo/pin-2.webp',
+    'demo/bear-1.webp',
+    'demo/charm-3.webp',
+    'demo/sachet-1.webp',
+    'demo/box-2.webp',
+    'demo/pin-1.webp',
+  ],
+  heroHint: '把光帶到中間，讓它聞一聞',
   lineId: '',
   lineUrl: 'https://line.me/',
-  videoUrl: DEFAULT_VIDEO_URL,
   heroTitle: '把日常的溫度，做成隨身的小物',
   heroSubtitle: '吊飾・香氛・包裝・徽章・娃娃',
   s2Lead: '每一件作品都從手繪開始 ',
   s2Accent1: '用心打樣',
   s2Accent2: '陪你收藏每個故事',
-  s3Eyebrow: '品牌名稱 | 文創選物',
+  s3Eyebrow: 'memorycollector | 文創選物',
   s3Line1: '喜歡哪一件，',
   s3Line2: '直接 LINE 我們。',
   s3Cta: 'LINE 詢問',
@@ -77,7 +87,7 @@ export const DEFAULT_SETTINGS: SiteSettings = {
   aboutImage: '',
   contactTitle: '聯絡我們',
   contactText: '商品詢問、客製化與企業大量訂購，歡迎加入 LINE 官方帳號與我們聯繫。',
-  footerText: '© 品牌名稱',
+  footerText: '© memorycollector',
 };
 
 export const DEFAULT_PRODUCTS: Product[] = [
@@ -254,14 +264,6 @@ export async function uploadImage(file: File, folder: UploadFolder): Promise<str
   }
   const blob = await resizeImage(file, isLogo ? 800 : 1600, 'image/webp');
   return putFile(blob, folder, 'image/webp');
-}
-
-/** Upload a background video (Supabase only — browsers can't keep videos in demo storage). */
-export async function uploadVideo(file: File): Promise<string> {
-  if (!supabase) throw new Error('示範模式無法上傳影片，請先設定 Supabase，或貼上影片網址');
-  if (file.type !== 'video/mp4') throw new Error('請上傳 MP4 影片（H.264）');
-  if (file.size > 50 * 1024 * 1024) throw new Error('影片超過 50MB（Supabase 免費方案上限），請先壓縮');
-  return putFile(file, 'video', 'video/mp4');
 }
 
 export function formatPrice(price: number | null): string {
